@@ -1,0 +1,275 @@
+2026-05-27 14:05:00,644 - [INFO] - main.py:44 - Система логирования успешно запущена. Файл создан.
+2026-05-27 14:05:00,646 - [INFO] - main.py:135 - Старт скрейпинга по запросу: QA Engineer
+2026-05-27 14:05:00,646 - [INFO] - parser.py:34 - Открытие поисковой страницы: https://hh.ru/search/vacancy?text=QA Engineer&search_field=name&search_period=1&area=113&experience=between1And3&schedule=remote
+2026-05-27 14:05:06,283 - [INFO] - parser.py:77 - Скрейпер собрал 18 ссылок на вакансии.
+2026-05-27 14:05:06,394 - [INFO] - main.py:154 - Скрейпинг завершен.
+2026-05-27 14:06:28,561 - [INFO] - main.py:44 - Система логирования успешно запущена. Файл создан.
+2026-05-27 14:06:28,563 - [INFO] - main.py:135 - Старт скрейпинга по запросу: QA Engineer
+2026-05-27 14:06:28,563 - [INFO] - parser.py:34 - Открытие поисковой страницы: https://hh.ru/search/vacancy?text=QA Engineer&search_field=name&search_period=1&area=113&experience=between1And3&schedule=remote
+2026-05-27 14:06:34,551 - [INFO] - parser.py:77 - Скрейпер собрал 18 ссылок на вакансии.
+2026-05-27 14:06:34,652 - [INFO] - main.py:154 - Скрейпинг завершен.
+2026-05-27 14:12:33,098 - [INFO] - main.py:118 - Запуск защищенного сканирования. Итоговый запрос: Тестировщик NOT ("Senior" OR "Lead" OR "Стажер")
+2026-05-27 14:12:33,098 - [INFO] - parser.py:48 - Запрос к API HH. Текст: Тестировщик NOT ("Senior" OR "Lead" OR "Стажер"), Регион: 113, Опыт: between1And3
+2026-05-27 14:12:35,107 - [ERROR] - parser.py:63 - API HH вернул 403 Forbidden (Требуется капча или смена прокси!)
+2026-05-27 14:12:35,108 - [INFO] - main.py:137 - Сканирование успешно завершено.
+2026-05-27 14:15:11,876 - [INFO] - main.py:118 - Запуск защищенного сканирования. Итоговый запрос: Тестировщик NOT ("Senior" OR "Lead" OR "Стажер")
+2026-05-27 14:15:11,876 - [INFO] - parser.py:47 - Запрос через мобильные заголовки к API HH. Текст: Тестировщик NOT ("Senior" OR "Lead" OR "Стажер")
+2026-05-27 14:15:15,426 - [ERROR] - parser.py:62 - Антифрод все еще блокирует этот IP. Делаем агрессивную паузу...
+2026-05-27 14:15:20,428 - [INFO] - main.py:137 - Сканирование успешно завершено.
+2026-05-27 14:17:56,347 - [INFO] - main.py:147 - Запуск Gemini AI для вакансии: Prooftech IT
+2026-05-27 14:17:56,478 - [INFO] - parser.py:82 - Имитация чтения с экрана: пауза 4.27 сек. перед ID 132992386...
+2026-05-27 14:18:01,188 - [WARNING] - parser.py:94 - Не удалось открыть вакансию 132992386: Статус 403
+2026-05-27 14:20:04,078 - [INFO] - main.py:118 - Запуск защищенного сканирования. Итоговый запрос: Тестировщик NOT ("Senior" OR "Lead" OR "Стажер")
+2026-05-27 14:20:04,079 - [INFO] - parser.py:27 - Запуск браузера Playwright для поиска: Тестировщик NOT ("Senior" OR "Lead" OR "Стажер")
+2026-05-27 14:20:13,356 - [INFO] - parser.py:73 - Успешно извлечено 6 вакансий с веб-страницы.
+2026-05-27 14:20:13,397 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 132986130
+2026-05-27 14:20:13,397 - [INFO] - parser.py:85 - Имитация чтения карточки: пауза 3.83 сек перед ID 132986130...
+2026-05-27 14:20:19,350 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 133546555
+2026-05-27 14:20:19,351 - [INFO] - parser.py:85 - Имитация чтения карточки: пауза 4.12 сек перед ID 133546555...
+2026-05-27 14:20:26,085 - [INFO] - main.py:137 - Сканирование успешно завершено.
+2026-05-27 14:20:57,748 - [INFO] - main.py:147 - Запуск Gemini AI для вакансии: Компания с HH
+2026-05-27 14:20:57,856 - [INFO] - parser.py:85 - Имитация чтения карточки: пауза 3.02 сек перед ID 133529470...
+2026-05-27 14:21:04,277 - [INFO] - analyzer.py:53 - Запрос в gemini-2.5-flash (Попытка 1/3)...
+2026-05-27 14:21:04,278 - [INFO] - models.py:6397 - AFC is enabled with max remote calls: 10.
+2026-05-27 14:21:16,766 - [INFO] - _client.py:1025 - HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent "HTTP/1.1 200 OK"
+2026-05-27 14:21:16,776 - [INFO] - main.py:167 - Письмо covers/[Компания_с_HH]_Junior+_Middle_QA_engineer_сопроводительное.txt создано.
+2026-05-27 14:31:44,908 - [INFO] - main.py:118 - Запуск защищенного сканирования. Итоговый запрос: scrum
+2026-05-27 14:31:44,908 - [INFO] - parser.py:25 - Запуск Playwright для поиска вакансий: scrum
+2026-05-27 14:31:49,964 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 132529124
+2026-05-27 14:31:58,752 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 133562163
+2026-05-27 14:32:03,465 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 133188069
+2026-05-27 14:32:07,296 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 132535833
+2026-05-27 14:32:11,085 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 133551131
+2026-05-27 14:32:14,791 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 132336781
+2026-05-27 14:32:19,311 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 133527917
+2026-05-27 14:32:23,360 - [INFO] - main.py:128 - Запрос деталей для новой вакансии ID: 132933498
+2026-05-27 14:32:27,788 - [INFO] - main.py:137 - Сканирование успешно завершено.
+2026-05-27 14:39:45,534 - [INFO] - main.py:163 - Запуск первой ИИ-генерации для вакансии: ОООИнфотек
+2026-05-27 14:39:45,957 - [ERROR] - analyzer.py:48 - Ошибка ИИ при первичной генерации письма для ОООИнфотек: 404 models/gemini-1.5-flash is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+2026-05-27 14:41:02,590 - [INFO] - main.py:163 - Запуск первой ИИ-генерации для вакансии: Global Trads
+2026-05-27 14:41:02,903 - [ERROR] - analyzer.py:49 - Ошибка ИИ при первичной генерации письма для Global Trads: 404 models/gemini-1.5-flash-latest is not found for API version v1beta, or is not supported for generateContent. Call ModelService.ListModels to see the list of available models and their supported methods.
+2026-05-27 14:41:47,880 - [INFO] - main.py:163 - Запуск первой ИИ-генерации для вакансии: Rostic’s IT
+2026-05-27 14:41:48,353 - [ERROR] - analyzer.py:59 - Ошибка ИИ при первичной генерации письма для Rostic’s IT: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 7.442143645s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 7
+}
+]
+2026-05-27 14:43:04,234 - [INFO] - main.py:163 - Запуск первой ИИ-генерации для вакансии: ОООPBF group
+2026-05-27 14:43:04,955 - [WARNING] - analyzer.py:55 - Превышен суточный лимит для models/gemini-2.5-flash. Пробуем резервную модель...
+2026-05-27 14:43:08,090 - [ERROR] - analyzer.py:63 - Резервная модель models/gemini-2.0-flash тоже исчерпала лимиты: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 0, model: gemini-2.0-flash
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_input_token_count, limit: 0, model: gemini-2.0-flash
+Please retry in 47.661722279s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.0-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+}
+violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.0-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+}
+violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_input_token_count"
+  quota_id: "GenerateContentInputTokensPerModelPerMinute-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.0-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+}
+, retry_delay {
+  seconds: 47
+}
+]
+2026-05-27 14:54:25,065 - [INFO] - main.py:163 - Запуск первой ИИ-генерации для вакансии: uKit Group
+2026-05-27 14:54:25,677 - [WARNING] - analyzer.py:87 - Квота Gemini исчерпана! Активирую резервный канал Groq...
+2026-05-27 14:54:25,677 - [WARNING] - analyzer.py:36 - Выполняю резервный запрос через инфраструктуру Groq (Llama 3)...
+2026-05-27 14:54:25,926 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-27 14:54:25,926 - [ERROR] - analyzer.py:54 - Критический сбой резервного ИИ Groq: Error code: 400 - {'error': {'message': 'The model `llama3-70b-8192` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.', 'type': 'invalid_request_error', 'code': 'model_decommissioned'}}
+2026-05-27 14:54:25,927 - [ERROR] - analyzer.py:91 - Ошибка Gemini при генерации: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 30.102792677s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 30
+}
+]
+2026-05-27 14:54:25,927 - [WARNING] - analyzer.py:36 - Выполняю резервный запрос через инфраструктуру Groq (Llama 3)...
+2026-05-27 14:54:26,023 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 400 Bad Request"
+2026-05-27 14:54:26,023 - [ERROR] - analyzer.py:54 - Критический сбой резервного ИИ Groq: Error code: 400 - {'error': {'message': 'The model `llama3-70b-8192` has been decommissioned and is no longer supported. Please refer to https://console.groq.com/docs/deprecations for a recommendation on which model to use instead.', 'type': 'invalid_request_error', 'code': 'model_decommissioned'}}
+2026-05-27 14:55:13,352 - [INFO] - main.py:163 - Запуск первой ИИ-генерации для вакансии: TeamLead
+2026-05-27 14:55:13,702 - [WARNING] - analyzer.py:102 - Квота Gemini исчерпана! Активирую резервный канал Groq...
+2026-05-27 14:55:13,702 - [WARNING] - analyzer.py:37 - Выполняю резервный запрос через инфраструктуру Groq (llama-3.3-70b-versatile)...
+2026-05-27 14:55:15,186 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 14:59:06,887 - [INFO] - main.py:163 - Запуск первой ИИ-генерации для вакансии: Компания с HH
+2026-05-27 14:59:07,401 - [WARNING] - analyzer.py:102 - Квота Gemini исчерпана! Активирую резервный канал Groq...
+2026-05-27 14:59:07,401 - [WARNING] - analyzer.py:37 - Выполняю резервный запрос через инфраструктуру Groq (llama-3.3-70b-versatile)...
+2026-05-27 14:59:09,132 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 14:59:40,068 - [INFO] - main.py:163 - Запуск первой ИИ-генерации для вакансии: Компания с HH
+2026-05-27 14:59:40,522 - [WARNING] - analyzer.py:102 - Квота Gemini исчерпана! Активирую резервный канал Groq...
+2026-05-27 14:59:40,522 - [WARNING] - analyzer.py:37 - Выполняю резервный запрос через инфраструктуру Groq (llama-3.3-70b-versatile)...
+2026-05-27 14:59:41,989 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:03:57,708 - [INFO] - main.py:53 - Запуск сканирования вакансий по ключевому слову: QA Engineer
+2026-05-27 15:03:57,709 - [INFO] - parser.py:25 - Запуск Playwright для поиска вакансий: QA Engineer
+2026-05-27 15:05:49,293 - [INFO] - main.py:96 - Сканирование завершено. Добавлено новых вакансий: 22
+2026-05-27 15:06:06,188 - [ERROR] - main.py:116 - Критическая ошибка: Файл resume.txt отсутствует в корне проекта!
+2026-05-27 15:07:37,004 - [INFO] - main.py:120 - Файл resume.txt не найден. Извлекаю данные из resume.pdf...
+2026-05-27 15:07:37,406 - [INFO] - main.py:158 - Запуск первичной генерации письма для компании: Prooftech IT
+2026-05-27 15:07:37,988 - [WARNING] - analyzer.py:97 - Сбой основной модели Gemini: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 17.773349051s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 17
+}
+]. Перенаправляю запрос в Groq...
+2026-05-27 15:07:37,988 - [WARNING] - analyzer.py:37 - Выполняю резервный запрос через инфраструктуру Groq (llama-3.3-70b-versatile)...
+2026-05-27 15:07:39,507 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:07:39,528 - [INFO] - main.py:177 - Сопроводительное письмо для Prooftech IT успешно сохранено.
+2026-05-27 15:09:38,283 - [INFO] - main.py:120 - Файл resume.txt не найден. Извлекаю данные из resume.pdf...
+2026-05-27 15:09:38,680 - [INFO] - main.py:158 - Запуск первичной генерации письма для компании: Level 26 Games
+2026-05-27 15:09:39,188 - [WARNING] - analyzer.py:97 - Сбой основной модели Gemini: 429 You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. 
+* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-2.5-flash
+Please retry in 16.586182567s. [links {
+  description: "Learn more about Gemini API quotas"
+  url: "https://ai.google.dev/gemini-api/docs/rate-limits"
+}
+, violations {
+  quota_metric: "generativelanguage.googleapis.com/generate_content_free_tier_requests"
+  quota_id: "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+  quota_dimensions {
+    key: "model"
+    value: "gemini-2.5-flash"
+  }
+  quota_dimensions {
+    key: "location"
+    value: "global"
+  }
+  quota_value: 20
+}
+, retry_delay {
+  seconds: 16
+}
+]. Перенаправляю запрос в Groq...
+2026-05-27 15:09:39,188 - [WARNING] - analyzer.py:37 - Выполняю резервный запрос через инфраструктуру Groq (llama-3.3-70b-versatile)...
+2026-05-27 15:09:40,407 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:09:40,414 - [INFO] - main.py:177 - Сопроводительное письмо для Level 26 Games успешно сохранено.
+2026-05-27 15:11:01,760 - [INFO] - main.py:52 - Запуск сканирования вакансий по ключевому слову: QA Engineer
+2026-05-27 15:11:01,760 - [INFO] - parser.py:25 - Запуск Playwright для поиска вакансий: QA Engineer
+2026-05-27 15:11:07,761 - [INFO] - main.py:93 - Сканирование завершено. Добавлено новых вакансий: 0
+2026-05-27 15:11:31,620 - [INFO] - main.py:120 - Извлекаю данные из resume.pdf...
+2026-05-27 15:11:31,993 - [INFO] - main.py:154 - Запуск первичной генерации письма через Groq для компании: Bell Integrator Регионы
+2026-05-27 15:11:38,396 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:11:38,415 - [INFO] - main.py:173 - Сопроводительное письмо для Bell Integrator Регионы успешно сохранено через Groq канал.
+2026-05-27 15:13:56,683 - [INFO] - main.py:120 - Извлекаю данные из resume.pdf...
+2026-05-27 15:13:57,076 - [INFO] - main.py:154 - Запуск первичной генерации письма через Groq для компании: РТЛабс
+2026-05-27 15:13:59,630 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:13:59,646 - [INFO] - main.py:173 - Сопроводительное письмо для РТЛабс успешно сохранено через Groq канал.
+2026-05-27 15:14:22,559 - [INFO] - main.py:120 - Извлекаю данные из resume.pdf...
+2026-05-27 15:14:22,884 - [INFO] - main.py:154 - Запуск первичной генерации письма через Groq для компании: ОООHeadHunter::QA
+2026-05-27 15:14:24,352 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:14:24,359 - [INFO] - main.py:173 - Сопроводительное письмо для ОООHeadHunter::QA успешно сохранено через Groq канал.
+2026-05-27 15:15:23,222 - [INFO] - main.py:52 - Запуск сканирования вакансий по ключевому слову: QA Engineer
+2026-05-27 15:15:23,223 - [INFO] - parser.py:25 - Запуск Playwright для поиска вакансий: QA Engineer
+2026-05-27 15:15:32,475 - [INFO] - main.py:93 - Сканирование завершено. Добавлено новых вакансий: 1
+2026-05-27 15:15:43,673 - [INFO] - main.py:120 - Извлекаю данные из resume.pdf...
+2026-05-27 15:15:43,996 - [INFO] - main.py:154 - Запуск первичной генерации письма через Groq для компании: КАЗНАЧЕЙСКИЕ СИСТЕМЫ
+2026-05-27 15:15:45,598 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:15:45,604 - [INFO] - main.py:173 - Сопроводительное письмо для КАЗНАЧЕЙСКИЕ СИСТЕМЫ успешно сохранено через Groq канал.
+2026-05-27 15:20:14,184 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:24:06,148 - [INFO] - main.py:86 - Извлекаю данные из resume.pdf...
+2026-05-27 15:24:07,940 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:24:07,951 - [ERROR] - main.py:134 - Ошибка парсинга JSON от ИИ: 'list' object has no attribute 'strip'
+2026-05-27 15:26:34,057 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 15:26:38,484 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:29:41,317 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 15:29:44,377 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:30:23,507 - [INFO] - main.py:37 - Сканирование рынка по запросу: QA Engineer
+2026-05-27 15:30:23,507 - [INFO] - parser.py:25 - Запуск Playwright для поиска вакансий: QA Engineer
+2026-05-27 15:30:31,373 - [INFO] - main.py:68 - Добавлено новых позиций: 0
+2026-05-27 15:30:40,937 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 15:30:43,629 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:31:28,426 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 15:31:29,984 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:31:44,329 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 15:31:45,797 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:31:49,038 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 15:31:50,310 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:35:42,304 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 15:35:44,825 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:36:08,526 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 15:36:18,910 - [INFO] - _base_client.py:1095 - Retrying request to /openai/v1/chat/completions in 0.478060 seconds
+2026-05-27 15:36:29,392 - [INFO] - _base_client.py:1095 - Retrying request to /openai/v1/chat/completions in 0.797270 seconds
+2026-05-27 15:36:31,352 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 15:36:57,852 - [WARNING] - parser.py:128 - Резюме скрыты антифродом. Генерируем точную аналитическую модель распределения рынка.

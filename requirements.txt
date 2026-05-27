@@ -1,0 +1,7 @@
+requests==2.31.0
+google-genai==2.5.0
+python-dotenv==1.0.1
+pypdf==4.2.0
+beautifulsoup4==4.12.3
+playwright==1.42.0
+streamlit==1.32.0

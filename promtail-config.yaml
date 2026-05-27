@@ -1,0 +1,18 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: hh_bot_logs
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: hh_bot
+          __path__: /var/log/hh_bot/*.log  # Проверяем этот путь внутри контейнера
