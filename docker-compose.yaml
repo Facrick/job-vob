@@ -1,5 +1,4 @@
 version: "3.8"
-
 services:
   loki:
     image: docker.io/grafana/loki:2.9.0
@@ -12,7 +11,7 @@ services:
   promtail:
     image: docker.io/grafana/promtail:2.9.0
     volumes:
-      - ./logs:/var/log/hh_bot
+      - ./logs:/var/log/hh_bot_app_logs  # Изменено с ./data на ./logs
       - ./promtail-config.yaml:/etc/promtail/config.yaml
     command: -config.file=/etc/promtail/config.yaml
     networks:
@@ -25,7 +24,7 @@ services:
     ports:
       - "3000:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
     networks:
       - monitoring
     depends_on:

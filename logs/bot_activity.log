@@ -273,3 +273,57 @@ Please retry in 16.586182567s. [links {
 2026-05-27 15:36:29,392 - [INFO] - _base_client.py:1095 - Retrying request to /openai/v1/chat/completions in 0.797270 seconds
 2026-05-27 15:36:31,352 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
 2026-05-27 15:36:57,852 - [WARNING] - parser.py:128 - Резюме скрыты антифродом. Генерируем точную аналитическую модель распределения рынка.
+2026-05-27 16:17:19,102 - [WARNING] - parser.py:128 - Резюме скрыты антифродом. Генерируем точную аналитическую модель распределения рынка.
+2026-05-27 16:17:58,875 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 16:18:01,983 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 16:18:21,547 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 16:18:23,776 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 16:18:56,924 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 16:22:54,436 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 16:23:04,783 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 16:23:26,714 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 16:23:35,269 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 16:26:24,614 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 16:26:27,514 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 16:28:19,214 - [INFO] - main.py:85 - Извлекаю данные из resume.pdf...
+2026-05-27 16:28:22,278 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-27 16:45:52,404 - [INFO] - main.py:37 - Сканирование рынка по запросу: QA Engineer
+2026-05-27 16:45:52,405 - [INFO] - parser.py:25 - Запуск Playwright для поиска вакансий: QA Engineer
+2026-05-27 16:46:22,670 - [INFO] - main.py:68 - Добавлено новых позиций: 5
+2026-05-27 16:47:13,460 - [INFO] - main.py:37 - Сканирование рынка по запросу: QA Engineer
+2026-05-27 16:47:13,460 - [INFO] - parser.py:25 - Запуск Playwright для поиска вакансий: QA Engineer
+2026-05-27 16:47:23,140 - [INFO] - main.py:68 - Добавлено новых позиций: 1
+2026-05-27 16:51:11,304 - [INFO] - main.py:38 - Сканирование рынка по запросу: QA Engineer, период дней: 3
+2026-05-27 16:51:11,305 - [INFO] - parser.py:25 - Запуск Playwright для поиска вакансий: QA Engineer
+2026-05-27 16:51:59,124 - [INFO] - main.py:77 - Добавлено новых позиций: 9
+2026-05-27 16:52:06,054 - [INFO] - main.py:94 - Извлекаю данные из resume.pdf...
+2026-05-27 16:52:06,957 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 429 Too Many Requests"
+2026-05-27 16:52:06,957 - [WARNING] - analyzer.py:72 - Сбой llama-3.3-70b-versatile: Error code: 429 - {'error': {'message': 'Rate limit reached for model `llama-3.3-70b-versatile` in organization `org_01ksmmd0y9f5s9y8ba73kzmbe9` service tier `on_demand` on tokens per day (TPD): Limit 100000, Used 96478, Requested 4637. Please try again in 16m3.36s. Need more tokens? Upgrade to Dev Tier today at https://console.groq.com/settings/billing', 'type': 'tokens', 'code': 'rate_limit_exceeded'}}. Переключаюсь на резерв...
+2026-05-27 16:52:08,149 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-28 11:49:57,245 - [INFO] - main.py:38 - Сканирование рынка по запросу: Тестировщик, период дней: 3
+2026-05-28 11:49:57,245 - [INFO] - parser.py:25 - Запуск Playwright для поиска вакансий: Тестировщик
+2026-05-28 11:52:07,919 - [INFO] - main.py:77 - Добавлено новых позиций: 27
+2026-05-28 11:53:03,038 - [INFO] - main.py:94 - Извлекаю данные из resume.pdf...
+2026-05-28 11:53:05,515 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-28 11:57:59,936 - [INFO] - main.py:94 - Извлекаю данные из resume.pdf...
+2026-05-28 11:58:02,821 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-28 11:58:29,784 - [INFO] - main.py:94 - Извлекаю данные из resume.pdf...
+2026-05-28 11:58:31,679 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-28 11:58:41,354 - [INFO] - main.py:94 - Извлекаю данные из resume.pdf...
+2026-05-28 11:58:43,172 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-28 12:02:01,345 - [INFO] - main.py:94 - Извлекаю данные из resume.pdf...
+2026-05-28 12:02:01,778 - [INFO] - main.py:117 - Запуск перегенерации по правкам соискателя для: ОООТорговый Дом в&М
+2026-05-28 12:02:03,328 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-28 12:02:03,343 - [INFO] - main.py:173 - Файл covers/[ОООТорговый_Дом_в&М]_QA_инженер__тестировщик_сопроводительное.txt успешно обновлен и сохранен по промпту пользователя.
+2026-05-28 12:05:35,467 - [INFO] - main.py:94 - Извлекаю данные из resume.pdf...
+2026-05-28 12:05:35,951 - [INFO] - main.py:142 - Запуск первичной генерации через Groq для: Яндекс Крауд: Бэк-офис
+2026-05-28 12:05:38,954 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-28 12:05:38,994 - [INFO] - main.py:173 - Файл covers/[Яндекс_Крауд_Бэк-офис]_Тестировщик_главной_страницы_Яндекса_сопроводительное.txt успешно обновлен и сохранен по промпту пользователя.
+2026-05-28 12:06:19,364 - [INFO] - main.py:94 - Извлекаю данные из resume.pdf...
+2026-05-28 12:06:19,751 - [INFO] - main.py:117 - Запуск перегенерации по правкам соискателя для: Яндекс Крауд: Бэк-офис
+2026-05-28 12:06:20,924 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-28 12:06:20,928 - [INFO] - main.py:173 - Файл covers/[Яндекс_Крауд_Бэк-офис]_Тестировщик_главной_страницы_Яндекса_сопроводительное.txt успешно обновлен и сохранен по промпту пользователя.
+2026-05-28 12:06:46,163 - [INFO] - main.py:94 - Извлекаю данные из resume.pdf...
+2026-05-28 12:06:46,547 - [INFO] - main.py:117 - Запуск перегенерации по правкам соискателя для: Яндекс Крауд: Бэк-офис
+2026-05-28 12:06:47,712 - [INFO] - _client.py:1025 - HTTP Request: POST https://api.groq.com/openai/v1/chat/completions "HTTP/1.1 200 OK"
+2026-05-28 12:06:47,715 - [INFO] - main.py:173 - Файл covers/[Яндекс_Крауд_Бэк-офис]_Тестировщик_главной_страницы_Яндекса_сопроводительное.txt успешно обновлен и сохранен по промпту пользователя.
