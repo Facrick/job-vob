@@ -90,7 +90,7 @@ class MainController:
                         ft.DataCell(ft.Text("Open", color="blue", data=f"https://hh.ru/vacancy/{v['id']}", on_click=self.open_url)),
                     ],
                     data=v['id'],
-                    on_select_changed=self.handle_table_click
+                    on_select_change=self.handle_table_click
                 )
             )
         self.page.update()
@@ -137,7 +137,7 @@ class MainController:
             area=area, schedule=schedule, page_limit=1
         )
         self.repo.save_vacancies(vacancies)
-        self.page.run_thread(self.refresh_table_data)
+        self.refresh_table_data()
 
     def handle_generation(self, e):
         if not self.selected_vacancy_id:
@@ -209,7 +209,7 @@ class MainController:
         
         if success:
             self.repo.update_status(vacancy_id, "applied")
-            self.page.run_thread(self.refresh_table_data)
+            self.refresh_table_data()
             self.show_info_dialog("Успех", msg)
         else:
             self.show_error_dialog(msg)
@@ -298,12 +298,8 @@ class MainController:
 
     def show_error_dialog(self, message):
         dlg = ft.AlertDialog(title=ft.Text("Ошибка"), content=ft.Text(message))
-        self.page.dialog = dlg
-        dlg.open = True
-        self.page.update()
+        self.page.show_dialog(dlg)
 
     def show_info_dialog(self, title, message):
         dlg = ft.AlertDialog(title=ft.Text(title), content=ft.Text(message))
-        self.page.dialog = dlg
-        dlg.open = True
-        self.page.update()
+        self.page.show_dialog(dlg)
