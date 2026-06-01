@@ -1,0 +1,46 @@
+# === СЕКРЕТЫ ===
+.env
+.env.*
+!.env.example
+
+# === ДАННЫЕ И БД ===
+data/
+*.db
+*.db-journal
+
+# === ЛОГИ ===
+logs/
+*.log
+
+# === ГЕНЕРИРУЕМЫЕ ФАЙЛЫ ПОЛЬЗОВАТЕЛЯ ===
+covers/
+resume.pdf
+resume.txt
+AQA.docx
+
+# === СБОРКА PyInstaller ===
+build/
+dist/
+*.spec
+*.exe
+
+# === PYTHON ===
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.venv/
+venv/
+env/
+
+# === IDE ===
+.idea/
+.vscode/
+*.iml
+
+# === PLAYWRIGHT / BROWSER DATA ===
+data/browser_user_data/
+playwright-report/
+test-results/
