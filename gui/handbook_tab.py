@@ -13,7 +13,7 @@ class HandbookTabView:
             label="Направление", dense=True,
             value=getattr(controller.handbook, "track", "qa"),
             options=[ft.DropdownOption(key=k, text=v) for k, v in TRACKS.items()],
-            on_change=lambda e: controller.set_handbook_track(e.control.value),
+            on_select=lambda e: controller.set_handbook_track(e.control.value),
         )
 
         self.search_field = ft.TextField(hint_text="Поиск по темам...", dense=True,
