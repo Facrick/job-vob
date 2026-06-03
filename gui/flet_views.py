@@ -356,6 +356,24 @@ class AnalyticsTabView:
         self.btn_draw = primary_btn("Построить график зарплат",
                                     controller.draw_analytics_chart, icon=ft.Icons.BAR_CHART)
 
+        # Хитмап навыков
+        self.combo_heatmap_n = ft.Dropdown(
+            label="Топ", value="20", dense=True, width=100,
+            options=[
+                ft.DropdownOption(key="10", text="10"),
+                ft.DropdownOption(key="20", text="20"),
+                ft.DropdownOption(key="30", text="30"),
+            ],
+        )
+        self.btn_heatmap = primary_btn("Построить хитмап",
+                                       controller.draw_skill_heatmap, icon=ft.Icons.LEADERBOARD)
+        self.heatmap_placeholder = ft.Text(
+            "Нажмите «Построить хитмап», чтобы увидеть топ навыков из ваших вакансий.",
+            italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+        )
+        self.heatmap_box = ft.Column(scroll=ft.ScrollMode.AUTO, spacing=8,
+                                     expand=True, controls=[self.heatmap_placeholder])
+
     def build(self, wide: bool = True) -> ft.Control:
         funnel = card(ft.Column(spacing=10, controls=[
             section_title("Воронка поиска работы", ft.Icons.FILTER_ALT), self.funnel_box,
@@ -365,9 +383,25 @@ class AnalyticsTabView:
                 section_title("Зарплаты на рынке", ft.Icons.QUERY_STATS),
                 ft.Container(expand=True), self.btn_draw,
             ]),
-            ft.Container(expand=True, content=ft.Stack(expand=True, controls=[self.placeholder, self.chart_image])),
+            ft.Container(expand=True, content=ft.Stack(expand=True,
+                                                        controls=[self.placeholder, self.chart_image])),
         ]), expand=True)
-        return page_column([funnel, chart])
+        heatmap = card(ft.Column(expand=True, spacing=10, controls=[
+            ft.Row(controls=[
+                section_title("Топ навыков рынка", ft.Icons.LEADERBOARD),
+                ft.Container(expand=True),
+                self.combo_heatmap_n, self.btn_heatmap,
+            ]),
+            self.heatmap_box,
+        ]), expand=True)
+        if wide:
+            bottom = ft.Row(expand=True, spacing=GAP, controls=[
+                ft.Column(expand=1, controls=[chart]),
+                ft.Column(expand=1, controls=[heatmap]),
+            ])
+        else:
+            bottom = ft.Column(expand=True, spacing=GAP, controls=[chart, heatmap])
+        return page_column([funnel, bottom])
 
 
 # ──────────────────────────────────────────────────────────────

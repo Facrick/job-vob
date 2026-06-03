@@ -16,6 +16,7 @@ from core.matching import compute_match_score
 from core.parser import HHParser
 from core.paths import user_path
 from core.search_service import SearchService
+from core.skill_heatmap import GRADE_COLORS, extract_top_skills
 from core.utils import extract_salary_from_resume, html_to_markdown
 
 
@@ -1100,6 +1101,67 @@ class MainController:
         self.view.analytics_tab.chart_image.src = path
         self.view.analytics_tab.chart_image.visible = True
         self.page.update()
+
+    def draw_skill_heatmap(self, e):
+        top_n = int(self.view.analytics_tab.combo_heatmap_n.value or 20)
+        vacancies = self.repo.get_vacancies_filtered("all")
+        if not vacancies:
+            self._show_info("Нет данных", "Соберите вакансии на вкладке CRM.")
+            return
+
+        skills = extract_top_skills(vacancies, top_n=top_n, min_count=1)
+        box = self.view.analytics_tab.heatmap_box
+        box.controls.clear()
+
+        if not skills:
+            box.controls.append(ft.Text(
+                "Навыки не найдены. Убедитесь, что у вакансий заполнено поле «Ключевые навыки».",
+                italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
+            ))
+            self.page.update()
+            return
+
+        max_count = skills[0]["count"]
+        grade_order = ["Junior", "Middle", "Senior/Lead"]
+
+        for item in skills:
+            ratio = item["count"] / max_count
+            grade_chips = []
+            for grade in grade_order:
+                n = item["grades"].get(grade, 0)
+                if not n:
+                    continue
+                color = getattr(ft.Colors, GRADE_COLORS[grade])
+                label = f"{'J' if grade == 'Junior' else 'M' if grade == 'Middle' else 'S'}:{n}"
+                grade_chips.append(ft.Container(
+                    content=ft.Text(label, size=10, color=color, weight=ft.FontWeight.W_500),
+                    bgcolor=ft.Colors.with_opacity(0.15, color),
+                    border_radius=12, padding=ft.Padding(5, 1, 5, 1),
+                ))
+
+            count_chip = ft.Container(
+                content=ft.Text(str(item["count"]), size=11,
+                                weight=ft.FontWeight.BOLD,
+                                color=ft.Colors.INDIGO_300),
+                bgcolor=ft.Colors.with_opacity(0.12, ft.Colors.INDIGO_300),
+                border_radius=12, padding=ft.Padding(7, 1, 7, 1),
+            )
+            box.controls.append(ft.Column(spacing=3, controls=[
+                ft.Row(spacing=6, controls=[
+                    ft.Container(
+                        content=ft.Text(item["skill"], size=12, no_wrap=True,
+                                        overflow=ft.TextOverflow.ELLIPSIS),
+                        width=160,
+                    ),
+                    *grade_chips,
+                    ft.Container(expand=True),
+                    count_chip,
+                ]),
+                ft.ProgressBar(value=ratio, color=ft.Colors.INDIGO_400, bgcolor=ft.Colors.SURFACE_CONTAINER_HIGHEST),
+            ]))
+
+        if self.page:
+            self.page.update()
 
     # ── Диалоги ───────────────────────────────────────────────────────
     def _show_error(self, message: str):
