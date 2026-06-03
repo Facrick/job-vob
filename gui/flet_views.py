@@ -131,6 +131,10 @@ class ScoutTabView:
             ]),
         ])
 
+        self.table_empty_label = ft.Text(
+            "Нажмите «Найти», чтобы загрузить вакансии с hh.ru",
+            italic=True, color=ft.Colors.ON_SURFACE_VARIANT, size=13,
+        )
         self.data_table = ft.DataTable(
             heading_row_color=ft.Colors.SURFACE_CONTAINER_HIGHEST,
             heading_text_style=ft.TextStyle(weight=ft.FontWeight.BOLD),
@@ -188,6 +192,7 @@ class ScoutTabView:
 
         table = card(ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, controls=[
             ft.Row(scroll=ft.ScrollMode.AUTO, controls=[self.data_table]),
+            self.table_empty_label,
         ]), expand=True, padding=8)
 
         details = card(ft.Column(expand=True, spacing=10, controls=[
@@ -227,11 +232,16 @@ class ScoutTabView:
 class LettersTabView:
     def __init__(self, controller):
         self.controller = controller
+        self.vacancy_label = ft.Text(
+            "Вакансия не выбрана — выберите её в CRM",
+            size=13, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
+        )
         self.text_letter = ft.TextField(label="Сопроводительное письмо", multiline=True,
                                         min_lines=14, expand=True, border_color=ft.Colors.OUTLINE_VARIANT)
         self.text_recs = ft.TextField(label="Рекомендации к подготовке", multiline=True,
                                       min_lines=6, expand=True, read_only=True,
-                                      border_color=ft.Colors.OUTLINE_VARIANT)
+                                      border_color=ft.Colors.OUTLINE_VARIANT,
+                                      hint_text="Появятся после генерации ИИ-письма")
         self.input_feedback = ft.TextField(label="Что исправить? Опишите правки для ИИ",
                                            expand=True, dense=True)
         self.btn_feedback   = secondary_btn("Исправить",  controller.handle_feedback, icon=ft.Icons.EDIT)
@@ -242,7 +252,9 @@ class LettersTabView:
 
     def build(self, wide: bool = True) -> ft.Control:
         editor = card(ft.Column(expand=True, spacing=8, controls=[
-            section_title("Текст письма", ft.Icons.DESCRIPTION_OUTLINED), self.text_letter,
+            ft.Row([section_title("Текст письма", ft.Icons.DESCRIPTION_OUTLINED),
+                    ft.Container(expand=True), self.vacancy_label]),
+            self.text_letter,
         ]), expand=True)
         recs = card(ft.Column(expand=True, spacing=8, controls=[
             section_title("Рекомендации ИИ", ft.Icons.LIGHTBULB_OUTLINE), self.text_recs,
@@ -280,11 +292,16 @@ class InterviewTabView:
         self.chat_arena = ft.ListView(expand=True, spacing=10, auto_scroll=True, padding=4)
         self.input_chat = ft.TextField(label="Ваш ответ...", expand=True, dense=True,
                                        on_submit=controller.handle_send_chat)
+        self.interview_vacancy_label = ft.Text(
+            "Вакансия не выбрана", size=12,
+            color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
+        )
         self.btn_send     = primary_btn("Отправить",  controller.handle_send_chat,    icon=ft.Icons.SEND)
         self.btn_start    = primary_btn("Начать",     controller.handle_start_mock,   icon=ft.Icons.PLAY_ARROW)
         self.btn_reset    = secondary_btn("Сбросить", controller.handle_reset_mock,   icon=ft.Icons.REFRESH)
         self.btn_evaluate = secondary_btn("Оценить сессию", controller.handle_evaluate_interview,
                                           icon=ft.Icons.ASSESSMENT)
+        self.btn_evaluate.visible = False
 
         # Панель отчёта
         self.report_summary    = ft.Text("", size=13, color=ft.Colors.ON_SURFACE_VARIANT)
@@ -313,16 +330,19 @@ class InterviewTabView:
         )
 
     def build(self, wide: bool = True) -> ft.Control:
-        controls_bar = card(ft.Row(
-            spacing=10, wrap=False,
-            vertical_alignment=ft.CrossAxisAlignment.CENTER,
-            controls=[
-                section_title("Mock-собеседование с ИИ", ft.Icons.PSYCHOLOGY),
-                self.combo_format,
-                ft.Container(expand=True),
-                self.btn_start, self.btn_evaluate, self.btn_reset,
-            ],
-        ), padding=12)
+        controls_bar = card(ft.Column(spacing=8, controls=[
+            ft.Row(
+                spacing=10, wrap=False,
+                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                controls=[
+                    section_title("Mock-собеседование с ИИ", ft.Icons.PSYCHOLOGY),
+                    self.combo_format,
+                    ft.Container(expand=True),
+                    self.btn_start, self.btn_evaluate, self.btn_reset,
+                ],
+            ),
+            self.interview_vacancy_label,
+        ]), padding=12)
         chat  = card(self.chat_arena, expand=True, padding=12)
         input_bar = card(ft.Row(spacing=10, controls=[self.input_chat, self.btn_send]), padding=12)
         report = card(self.report_panel, expand=True, padding=14)
@@ -371,8 +391,20 @@ class AnalyticsTabView:
             "Нажмите «Построить хитмап», чтобы увидеть топ навыков из ваших вакансий.",
             italic=True, color=ft.Colors.ON_SURFACE_VARIANT,
         )
+        _legend = ft.Row(spacing=8, controls=[
+            ft.Text("Грейды:", size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+            ft.Container(content=ft.Text("J — Junior",      size=10, color=ft.Colors.BLUE_300),
+                         bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.BLUE_300),
+                         border_radius=10, padding=ft.Padding(6, 2, 6, 2)),
+            ft.Container(content=ft.Text("M — Middle",      size=10, color=ft.Colors.INDIGO_400),
+                         bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.INDIGO_400),
+                         border_radius=10, padding=ft.Padding(6, 2, 6, 2)),
+            ft.Container(content=ft.Text("S — Senior/Lead", size=10, color=ft.Colors.PURPLE_400),
+                         bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.PURPLE_400),
+                         border_radius=10, padding=ft.Padding(6, 2, 6, 2)),
+        ])
         self.heatmap_box = ft.Column(scroll=ft.ScrollMode.AUTO, spacing=8,
-                                     expand=True, controls=[self.heatmap_placeholder])
+                                     expand=True, controls=[_legend, self.heatmap_placeholder])
 
     def build(self, wide: bool = True) -> ft.Control:
         funnel = card(ft.Column(spacing=10, controls=[
@@ -519,10 +551,14 @@ class LogsTabView:
                                       min_lines=20, text_size=12,
                                       text_style=ft.TextStyle(font_family="Consolas"),
                                       border_color=ft.Colors.OUTLINE_VARIANT)
+        self.btn_clear = secondary_btn("Очистить", controller.handle_clear_logs,
+                                       icon=ft.Icons.DELETE_SWEEP)
 
     def build(self, wide: bool = True) -> ft.Control:
         return page_column([card(ft.Column(expand=True, spacing=8, controls=[
-            section_title("Журнал событий", ft.Icons.TERMINAL), self.logs_text,
+            ft.Row([section_title("Журнал событий", ft.Icons.TERMINAL),
+                    ft.Container(expand=True), self.btn_clear]),
+            self.logs_text,
         ]), expand=True)])
 
 

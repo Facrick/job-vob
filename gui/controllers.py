@@ -172,9 +172,23 @@ class MainController:
                 on_click=lambda e, t=term: self._generate_handbook_topic(t)))
         self.page.update()
 
+    _ACTIVE_BTN_STYLE = ft.ButtonStyle(
+        bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.INDIGO_300),
+        color=ft.Colors.INDIGO_300,
+    )
+    _INACTIVE_BTN_STYLE = ft.ButtonStyle(bgcolor=None, color=None)
+
     def set_handbook_mode(self, mode: str):
         self._hb_mode = mode
         hb = self.view.handbook_tab
+        mode_btns = {
+            "sections":  hb.btn_mode_sections,
+            "favorites": hb.btn_mode_fav,
+            "plan":      hb.btn_mode_plan,
+            "cards":     hb.btn_mode_cards,
+        }
+        for m, btn in mode_btns.items():
+            btn.style = self._ACTIVE_BTN_STYLE if m == mode else self._INACTIVE_BTN_STYLE
         is_cards = mode == "cards"
         hb.search_field.visible = not is_cards
         hb.tree_handbook.visible = not is_cards
@@ -460,6 +474,8 @@ class MainController:
                 ],
                 data=v["id"], on_select_change=self._handle_table_click,
             ))
+        has_rows = bool(vacancies)
+        self.view.scout_tab.table_empty_label.visible = not has_rows
         self._update_funnel_counters()
         self._render_funnel()
         self.page.update()
@@ -633,6 +649,13 @@ class MainController:
             scout.detail_notes.value = v.get("notes") or ""
             for b in (scout.btn_generate, scout.btn_analyze, scout.btn_open_url):
                 b.visible = True
+
+        if v:
+            label = f"{v.get('company', '')} — {v.get('title', '')}"
+            self.view.letters_tab.vacancy_label.value = label
+            self.view.letters_tab.vacancy_label.color = ft.Colors.INDIGO_300
+            self.view.letters_tab.vacancy_label.italic = False
+            self.view.interview_tab.interview_vacancy_label.value = f"Вакансия: {label}"
 
         existing = self.repo.get_cover_letter(self.selected_vacancy_id)
         if existing:
@@ -841,18 +864,39 @@ class MainController:
         if not letter:
             self._show_error("Письмо не может быть пустым.")
             return
+        v = self.repo.get_vacancy_by_id(self.selected_vacancy_id)
+        name = f"{v.get('company', '')} — {v.get('title', '')}" if v else self.selected_vacancy_id
 
-        def job():
-            parser = HHParser()
-            success, msg = parser.auto_apply(self.selected_vacancy_id, letter)
-            if success:
-                self.repo.update_status(self.selected_vacancy_id, "applied")
-                self.refresh_table_data()
-                self._show_info("Успех", msg)
-            else:
-                self._show_error(msg)
+        dlg = ft.AlertDialog(
+            title=ft.Text("Подтвердите автоотклик"),
+            content=ft.Text(f"Отправить отклик с сопроводительным письмом на вакансию:\n«{name}»?"),
+        )
 
-        self._run_bg(job, busy=self.view.letters_tab.btn_auto_apply)
+        def _close(_):
+            dlg.open = False
+            self.page.update()
+
+        def _confirmed(_):
+            dlg.open = False
+            self.page.update()
+
+            def job():
+                parser = HHParser()
+                success, msg = parser.auto_apply(self.selected_vacancy_id, letter)
+                if success:
+                    self.repo.update_status(self.selected_vacancy_id, "applied")
+                    self.refresh_table_data()
+                    self._show_info("Отклик отправлен", msg)
+                else:
+                    self._show_error(msg)
+
+            self._run_bg(job, busy=self.view.letters_tab.btn_auto_apply)
+
+        dlg.actions = [
+            ft.TextButton("Отправить", on_click=_confirmed),
+            ft.TextButton("Отмена",    on_click=_close),
+        ]
+        self.page.show_dialog(dlg)
 
     def open_vacancy_in_browser(self, e):
         if not self.selected_vacancy_id:
@@ -957,6 +1001,7 @@ class MainController:
             reply = self.analyzer.generate_mock_reply(self.mock_chat_history)
             self.mock_chat_history.append({"role": "assistant", "content": reply})
             self.repo.save_mock_interview(self.selected_vacancy_id, self.mock_chat_history)
+            self.view.interview_tab.btn_evaluate.visible = True
             self._render_mock_chat()
 
         self._run_bg(_start, busy=self.view.interview_tab.btn_start)
@@ -1056,6 +1101,8 @@ class MainController:
         if self.selected_vacancy_id:
             self.repo.save_mock_interview(self.selected_vacancy_id, [])
         self.view.interview_tab.chat_arena.controls.clear()
+        self.view.interview_tab.btn_evaluate.visible = False
+        self._clear_report()
         self.page.update()
 
     def _render_mock_chat(self):
@@ -1164,6 +1211,11 @@ class MainController:
             self.page.update()
 
     # ── Диалоги ───────────────────────────────────────────────────────
+    def handle_clear_logs(self, e):
+        self.view.logs_tab.logs_text.value = ""
+        if self.page:
+            self.page.update()
+
     def _show_error(self, message: str):
         if not self.page:
             return
