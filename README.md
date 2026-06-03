@@ -53,7 +53,7 @@ playwright install chromium
 ## Запуск
 
 ```bash
-python run_flet.py
+python run.py
 ```
 
 При первом поиске откроется окно браузера (Playwright). Если hh.ru покажет
@@ -73,7 +73,7 @@ core/        бизнес-логика (без UI)
 gui/
   flet_views.py  представление (вкладки, виджеты)
   controllers.py контроллер (связывает UI и core)
-run_flet.py    точка входа
+run.py         точка входа
 data/          БД, настройки, учебник (не в git)
 ```
 

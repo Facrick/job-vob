@@ -7,6 +7,7 @@ Playwright. Используется как основной источник; �
 Сетевой вызов изолирован в `_get_json`, чтобы маппинг JSON→dict тестировался
 офлайн без обращения к сети.
 """
+
 from __future__ import annotations
 
 import json
@@ -34,7 +35,9 @@ class HHApiClient:
         if params:
             url += "?" + urllib.parse.urlencode(params)
         req = urllib.request.Request(url, headers={"User-Agent": _USER_AGENT})
-        with urllib.request.urlopen(req, timeout=20) as resp:  # noqa: S310 (доверенный домен)
+        with urllib.request.urlopen(
+            req, timeout=20
+        ) as resp:  # noqa: S310 (доверенный домен)
             return json.loads(resp.read().decode("utf-8"))
 
     # ── Маппинг JSON → внутренний dict (как у парсера) ─────────────
@@ -60,10 +63,17 @@ class HHApiClient:
 
     @staticmethod
     def _map_detail(detail: dict) -> dict:
-        description = strip_html(detail.get("description") or "") or "Описание отсутствует."
-        skills = ", ".join(
-            s.get("name", "") for s in (detail.get("key_skills") or []) if s.get("name")
-        ) or "Не указаны"
+        description = (
+            strip_html(detail.get("description") or "") or "Описание отсутствует."
+        )
+        skills = (
+            ", ".join(
+                s.get("name", "")
+                for s in (detail.get("key_skills") or [])
+                if s.get("name")
+            )
+            or "Не указаны"
+        )
         return {"description": description, "skills": skills}
 
     # ── Основной сценарий ──────────────────────────────────────────
@@ -87,9 +97,13 @@ class HHApiClient:
         items: list[dict] = []
         for page in range(page_limit):
             params = {
-                "text": text, "search_field": "name", "area": area,
-                "experience": experience, "period": period,
-                "per_page": 20, "page": page,
+                "text": text,
+                "search_field": "name",
+                "area": area,
+                "experience": experience,
+                "period": period,
+                "per_page": 20,
+                "page": page,
             }
             if schedule:
                 params["schedule"] = schedule

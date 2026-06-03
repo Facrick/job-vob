@@ -7,6 +7,7 @@ html_to_markdown() — конвертирует HTML из handbook.json в Markd
 продублирована в ai_engine.VacancySalaryParser и
 parser.HHParser._parse_salary_text с расходящимся поведением.
 """
+
 from __future__ import annotations
 
 import re
@@ -16,13 +17,33 @@ from html.parser import HTMLParser
 #  HTML → Markdown
 # ──────────────────────────────────────────────────────────────────────────────
 
+
 class _HtmlToMd(HTMLParser):
     """Минимальный конвертер HTML → Markdown без сторонних зависимостей."""
 
-    _BLOCK = {"h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "br",
-               "ul", "ol", "div", "blockquote"}
-    _HEADING_PREFIX = {"h1": "# ", "h2": "## ", "h3": "### ",
-                       "h4": "#### ", "h5": "##### ", "h6": "###### "}
+    _BLOCK = {
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "p",
+        "li",
+        "br",
+        "ul",
+        "ol",
+        "div",
+        "blockquote",
+    }
+    _HEADING_PREFIX = {
+        "h1": "# ",
+        "h2": "## ",
+        "h3": "### ",
+        "h4": "#### ",
+        "h5": "##### ",
+        "h6": "###### ",
+    }
 
     def __init__(self):
         super().__init__()
@@ -48,7 +69,7 @@ class _HtmlToMd(HTMLParser):
         elif tag == "i" or tag == "em":
             self._parts.append("*")
         elif tag == "code":
-            if not self._in_pre:           # внутри <pre> код уже в ``` ```
+            if not self._in_pre:  # внутри <pre> код уже в ``` ```
                 self._parts.append("`")
         elif tag == "p":
             self._parts.append("\n")
@@ -110,7 +131,7 @@ def strip_html(html: str) -> str:
     text = re.sub(r"(?i)<li[^>]*>", "\n• ", text)
     text = re.sub(r"(?i)<br\s*/?>", "\n", text)
     text = re.sub(r"(?i)</(p|div|ul|ol|h[1-6]|tr)>", "\n", text)
-    text = re.sub(r"<[^>]+>", "", text)          # все оставшиеся теги
+    text = re.sub(r"<[^>]+>", "", text)  # все оставшиеся теги
     text = _html.unescape(text)
     text = re.sub(r"[ \t]+", " ", text)
     text = re.sub(r"\n\s*\n+", "\n\n", text)
