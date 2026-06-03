@@ -39,11 +39,13 @@ class SearchService:
         page_limit: int = 1,
         max_vacancies: int | None = None,
         progress_callback: Callable | None = None,
+        on_vacancy: Callable | None = None,
     ) -> list[dict]:
         kwargs = dict(
             text=text, period=period, area=area, experience=experience,
             schedule=schedule, page_limit=page_limit,
             max_vacancies=max_vacancies, progress_callback=progress_callback,
+            on_vacancy=on_vacancy,
         )
 
         if self.config.get("use_official_api"):

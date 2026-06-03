@@ -183,6 +183,7 @@ class HHParser:
         page_limit: int = 1,
         progress_callback: Callable | None = None,
         max_vacancies: int | None = None,
+        on_vacancy: Callable | None = None,
     ) -> list[dict]:
         seen_ids = self._get_seen_ids()
         discovered_links = []
@@ -278,8 +279,11 @@ class HHParser:
                     try:
                         vacancy_info = self._parse_vacancy_detail(page, v["id"], v["name"])
                         if vacancy_info:
-                            final_vacancies.append(vacancy_info.to_dict())
+                            vd = vacancy_info.to_dict()
+                            final_vacancies.append(vd)
                             logging.info(f"✅ [{idx}/{total}] Сохранено: {vacancy_info.company} — {label}")
+                            if on_vacancy:
+                                on_vacancy(dict(vd))
                     except Exception as e:
                         if self._looks_like_captcha_error(str(e)):
                             logging.warning(f"⚠️ Капча на вакансии {v['id']}. Пауза 30 сек...")

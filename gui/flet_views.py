@@ -236,12 +236,14 @@ class LettersTabView:
             "Вакансия не выбрана — выберите её в CRM",
             size=13, color=ft.Colors.ON_SURFACE_VARIANT, italic=True,
         )
-        self.text_letter = ft.TextField(label="Сопроводительное письмо", multiline=True,
-                                        min_lines=14, expand=True, border_color=ft.Colors.OUTLINE_VARIANT)
-        self.text_recs = ft.TextField(label="Рекомендации к подготовке", multiline=True,
-                                      min_lines=6, expand=True, read_only=True,
-                                      border_color=ft.Colors.OUTLINE_VARIANT,
-                                      hint_text="Появятся после генерации ИИ-письма")
+        self.text_letter = ft.TextField(
+            hint_text="Сопроводительное письмо появится здесь после генерации…",
+            multiline=True, min_lines=14, expand=True,
+            border_color=ft.Colors.OUTLINE_VARIANT)
+        self.text_recs = ft.TextField(
+            hint_text="Рекомендации ИИ появятся здесь после генерации…",
+            multiline=True, min_lines=6, expand=True, read_only=True,
+            border_color=ft.Colors.OUTLINE_VARIANT)
         self.input_feedback = ft.TextField(label="Что исправить? Опишите правки для ИИ",
                                            expand=True, dense=True)
         self.btn_feedback   = secondary_btn("Исправить",  controller.handle_feedback, icon=ft.Icons.EDIT)

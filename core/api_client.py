@@ -78,6 +78,7 @@ class HHApiClient:
         page_limit: int = 1,
         max_vacancies: int | None = None,
         progress_callback: Callable | None = None,
+        on_vacancy: Callable | None = None,
     ) -> list[dict]:
         if max_vacancies is None:
             max_vacancies = self.config.get("max_vacancies_per_search")
@@ -115,6 +116,8 @@ class HHApiClient:
             except Exception as e:
                 logging.warning(f"Деталь {base['id']} не загружена: {e}")
             result.append(base)
+            if on_vacancy:
+                on_vacancy(dict(base))
 
         logging.info(f"🏁 API hh.ru: готово, вакансий: {len(result)}")
         return result

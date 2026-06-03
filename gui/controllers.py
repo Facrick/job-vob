@@ -464,16 +464,7 @@ class MainController:
         table = self.view.scout_tab.data_table
         table.rows.clear()
         for v in vacancies:
-            table.rows.append(ft.DataRow(
-                cells=[
-                    ft.DataCell(self._match_chip(v.get("match_score"))),
-                    ft.DataCell(ft.Text(v.get("company", ""), weight=ft.FontWeight.W_500)),
-                    ft.DataCell(ft.Text(v.get("title", ""))),
-                    ft.DataCell(self._salary_chip(v.get("salary_min"), v.get("salary_max"))),
-                    ft.DataCell(self._status_chip(v.get("status", ""))),
-                ],
-                data=v["id"], on_select_change=self._handle_table_click,
-            ))
+            table.rows.append(self._make_vacancy_row(v))
         has_rows = bool(vacancies)
         self.view.scout_tab.table_empty_label.visible = not has_rows
         self._update_funnel_counters()
@@ -495,6 +486,18 @@ class MainController:
                     content=ft.Text(f"{label}: {n}", size=12, color=color, weight=ft.FontWeight.W_600),
                     bgcolor=ft.Colors.with_opacity(0.15, color),
                     border_radius=20, padding=ft.Padding(10, 4, 10, 4)))
+
+    def _make_vacancy_row(self, v: dict) -> ft.DataRow:
+        return ft.DataRow(
+            cells=[
+                ft.DataCell(self._match_chip(v.get("match_score"))),
+                ft.DataCell(ft.Text(v.get("company", ""), weight=ft.FontWeight.W_500)),
+                ft.DataCell(ft.Text(v.get("title", ""))),
+                ft.DataCell(self._salary_chip(v.get("salary_min"), v.get("salary_max"))),
+                ft.DataCell(self._status_chip(v.get("status", ""))),
+            ],
+            data=v["id"], on_select_change=self._handle_table_click,
+        )
 
     def _status_chip(self, status: str) -> ft.Control:
         label, color = self._STATUS_STYLE.get(status, (status or "—", ft.Colors.GREY))
@@ -728,16 +731,35 @@ class MainController:
         def job():
             try:
                 self.repo.clear_discovered_vacancies()
-                logging.info("🧹 Удалены ранее найденные необработанные вакансии (статус «Новая»).")
-                vacancies = SearchService().search(
-                    text=keyword, period=int(period), area=int(area), experience=exp,
-                    schedule=schedule, page_limit=3, progress_callback=progress)
+                logging.info("🧹 Удалены необработанные вакансии (статус «Новая»).")
+                # Очищаем таблицу немедленно
+                scout.data_table.rows.clear()
+                scout.table_empty_label.visible = True
+                if self.page:
+                    self.page.update()
+
                 resume_text = self._safe_resume_text()
-                for v in vacancies:
+                found_count = [0]
+
+                def on_vacancy(v: dict):
                     v["match_score"] = compute_match_score(resume_text, v)
-                self.repo.save_vacancies(vacancies)
-                logging.info(f"💾 В базу добавлено вакансий: {len(vacancies)}")
-                self.refresh_table_data()
+                    v.setdefault("status", "discovered")
+                    self.repo.save_vacancies([v])
+                    found_count[0] += 1
+                    scout.table_empty_label.visible = False
+                    scout.data_table.rows.append(self._make_vacancy_row(v))
+                    self._update_funnel_counters()
+                    if self.page:
+                        self.page.update()
+
+                SearchService().search(
+                    text=keyword, period=int(period), area=int(area), experience=exp,
+                    schedule=schedule, page_limit=3, progress_callback=progress,
+                    on_vacancy=on_vacancy)
+                logging.info(f"💾 Добавлено вакансий: {found_count[0]}")
+                self._render_funnel()
+                if self.page:
+                    self.page.update()
             finally:
                 scout.search_progress.visible = False
                 scout.search_status.visible = False
