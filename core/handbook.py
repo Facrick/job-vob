@@ -19,6 +19,31 @@ from core.paths import resource_path, user_path
 # Раздел, куда складываются сгенерированные ИИ материалы.
 AI_SECTION = "🤖 ИИ-материалы (на проверку)"
 
+# ── Мультитрек учебника (M20) ─────────────────────────────────────────────
+# Учебник больше не привязан только к QA: помимо встроенного QA-контента
+# поддерживаются направления Backend/Frontend/Data/DevOps. Их база может быть
+# пустой — контент наполняется ИИ-генерацией и правками (overlay), как в M22.
+DEFAULT_TRACK = "qa"
+TRACKS: dict[str, str] = {
+    "qa": "QA / Тестирование",
+    "backend": "Backend",
+    "frontend": "Frontend",
+    "data": "Data / Аналитика",
+    "devops": "DevOps",
+}
+# Персона для ИИ-генерации/квиза — задаёт направление сгенерированных материалов.
+TRACK_PERSONAS: dict[str, str] = {
+    "qa": "",  # дефолтный промпт уже QA-ориентирован
+    "backend": "Backend-разработчик: серверная разработка, API, базы данных, "
+               "архитектура, производительность",
+    "frontend": "Frontend-разработчик: JavaScript/TypeScript, вёрстка, "
+                "браузерные API, фреймворки (React/Vue/Angular), доступность",
+    "data": "Data-инженер/аналитик: SQL, ETL/ELT, пайплайны данных, "
+            "хранилища, визуализация и аналитика",
+    "devops": "DevOps-инженер: CI/CD, контейнеризация, Kubernetes, облака, "
+              "инфраструктура как код, мониторинг",
+}
+
 # Только реально «пустые» слова — QA-термины (тестирование, автоматизация) НЕ сюда.
 _STOPWORDS = {
     "опыт", "работа", "работы", "работать", "знание", "знания", "умение", "умения",
@@ -71,20 +96,85 @@ def _fuzzy_match(a: str, b: str, n: int = 5) -> bool:
 
 class QAHandbook:
     def __init__(self, data_path: str | None = None, overlay_path: str | None = None,
-                 prefs_path: str | None = None):
-        self.data_path = self._resolve_path(data_path)
-        # Записываемый overlay: ИИ-сгенерированные и отредактированные темы.
-        # Базовый handbook.json в собранном .exe только для чтения, поэтому
-        # пользовательский контент хранится отдельно и мержится поверх базы.
-        self.overlay_path = Path(overlay_path) if overlay_path else user_path("data/handbook_custom.json")
-        # Пользовательские настройки (избранное) — отдельный файл.
-        self.prefs_path = Path(prefs_path) if prefs_path else user_path("data/handbook_prefs.json")
-        self._base: dict[str, list[dict]] = self._load()
-        self._overlay: dict[str, list[dict]] = self._load_overlay()
-        self.sections: dict[str, list[dict]] = self._merge()
+                 prefs_path: str | None = None, track: str | None = None):
+        # Явные пути (используются в тестах) фиксируют QA-трек.
+        self._data_path_override = data_path
+        self._overlay_path_override = overlay_path
+        self._prefs_path_override = prefs_path
+        if track is None:
+            track = DEFAULT_TRACK if (data_path or overlay_path or prefs_path) \
+                else self._load_last_track()
+        self.track: str = track if track in TRACKS else DEFAULT_TRACK
+        self._apply_track()
+
+    # ── Мультитрек ────────────────────────────────────────────────────
+    def _track_state_path(self) -> Path:
+        return user_path("data/handbook_track.json")
+
+    def _load_last_track(self) -> str:
+        try:
+            p = self._track_state_path()
+            if p.exists():
+                with open(p, encoding="utf-8") as f:
+                    t = json.load(f).get("track")
+                if t in TRACKS:
+                    return t
+        except Exception:
+            pass
+        return DEFAULT_TRACK
+
+    def _save_last_track(self):
+        try:
+            p = self._track_state_path()
+            p.parent.mkdir(parents=True, exist_ok=True)
+            with open(p, "w", encoding="utf-8") as f:
+                json.dump({"track": self.track}, f, ensure_ascii=False)
+        except Exception as e:
+            logging.error(f"[Handbook] Не удалось сохранить трек: {e}")
+
+    def _resolve_optional(self, rel: str) -> Path | None:
+        """Тихо ищет базовый файл трека; None — если базы нет (контент из ИИ)."""
+        for c in (resource_path(rel), Path(rel)):
+            if c and c.exists():
+                return c
+        return None
+
+    def _track_paths(self, track: str) -> tuple[Path | None, Path, Path]:
+        """Пути (база, overlay, prefs) для трека. QA сохраняет старые имена."""
+        if track == DEFAULT_TRACK:
+            base = self._resolve_path(self._data_path_override)
+            overlay = (Path(self._overlay_path_override) if self._overlay_path_override
+                       else user_path("data/handbook_custom.json"))
+            prefs = (Path(self._prefs_path_override) if self._prefs_path_override
+                     else user_path("data/handbook_prefs.json"))
+        else:
+            base = self._resolve_optional(f"data/handbook_{track}.json")
+            overlay = user_path(f"data/handbook_custom_{track}.json")
+            prefs = user_path(f"data/handbook_prefs_{track}.json")
+        return base, overlay, prefs
+
+    def _apply_track(self):
+        """Загружает базу/overlay/prefs текущего трека и пересобирает учебник."""
+        self.data_path, self.overlay_path, self.prefs_path = self._track_paths(self.track)
+        self._base = self._load()
+        self._overlay = self._load_overlay()
+        self.sections = self._merge()
         prefs = self._load_prefs()
-        self.favorites: set[str] = set(prefs.get("favorites", []))
-        self.studied: set[str] = set(prefs.get("studied", []))
+        self.favorites = set(prefs.get("favorites", []))
+        self.studied = set(prefs.get("studied", []))
+
+    def set_track(self, track: str):
+        """Переключает направление учебника (контент, прогресс, избранное)."""
+        if track not in TRACKS or track == self.track:
+            return
+        self.track = track
+        self._save_last_track()
+        self._apply_track()
+
+    @property
+    def persona(self) -> str:
+        """Персона текущего трека для ИИ-генерации/квиза («» для QA)."""
+        return TRACK_PERSONAS.get(self.track, "")
 
     # ── Настройки пользователя: избранное и прогресс («изучено») ──────
     def _load_prefs(self) -> dict:

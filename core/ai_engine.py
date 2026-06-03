@@ -165,14 +165,20 @@ class LetterAnalyzer:
         return json.loads(content)
 
     def generate_handbook_article(
-        self, topic: str, context: str = ""
+        self, topic: str, context: str = "", persona: str = ""
     ) -> dict[str, str]:
         """Генерирует раздел учебника по теме → {question, answer(HTML)}.
 
         Используется, когда нужного материала нет в учебнике: ИИ создаёт его,
         а пользователь проверяет/правит. Быстрая модель + лимит токенов.
+        persona — направление учебника (M20), сужает фокус материала.
         """
         system_prompt = self.prompt_repo.get_handbook_article_instruction()
+        if persona:
+            system_prompt += (
+                f"\n\nНаправление учебника: {persona}. "
+                "Пиши материал и примеры именно под это направление."
+            )
         user_prompt = f"Тема: {topic}"
         if context:
             user_prompt += f"\nКонтекст (из вакансии): {context[:800]}"
@@ -219,13 +225,18 @@ class LetterAnalyzer:
         )
         return content.strip()
 
-    def generate_quiz_question(self, topic_title: str, answer_content: str) -> str:
+    def generate_quiz_question(
+        self, topic_title: str, answer_content: str, persona: str = ""
+    ) -> str:
         """Генерирует реальный вопрос для собеседования по теме учебника.
 
         Превращает заголовок вроде «1.1 Тестирование и QA» в конкретный вопрос
         «Объясните разницу между QA и QC. Какова роль тестировщика в каждом?»
+        persona — направление учебника (M20), задаёт контекст интервью.
         """
         system_prompt = self.prompt_repo.get_quiz_question_instruction()
+        if persona:
+            system_prompt += f"\nНаправление собеседования: {persona}."
         user_prompt = (
             f"Тема: {topic_title}\n\n"
             f"Краткое содержание темы:\n{answer_content[:1500]}"

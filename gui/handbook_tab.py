@@ -1,9 +1,21 @@
 import flet as ft
-from gui.components import primary_btn, secondary_btn, card, GAP
+
+from core.handbook import TRACKS
+from gui.components import GAP, card, primary_btn, secondary_btn
+
 
 class HandbookTabView:
     def __init__(self, controller):
         self.controller = controller
+
+        # Выбор направления учебника (M20): QA / Backend / Frontend / Data / DevOps.
+        self.track_selector = ft.Dropdown(
+            label="Направление", dense=True,
+            value=getattr(controller.handbook, "track", "qa"),
+            options=[ft.DropdownOption(key=k, text=v) for k, v in TRACKS.items()],
+            on_change=lambda e: controller.set_handbook_track(e.control.value),
+        )
+
         self.search_field = ft.TextField(hint_text="Поиск по темам...", dense=True,
                                          prefix_icon=ft.Icons.SEARCH,
                                          on_change=controller.handle_handbook_search)
@@ -127,6 +139,7 @@ class HandbookTabView:
 
     def build(self, wide: bool = True) -> ft.Control:
         left = card(ft.Column(expand=True, spacing=8, controls=[
+            self.track_selector,
             self.mode_bar,
             self.progress_label, self.progress_bar, self.search_field,
             self.tree_handbook,

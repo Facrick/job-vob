@@ -1,5 +1,5 @@
-import random
 import logging
+import random
 
 import flet as ft
 
@@ -97,11 +97,14 @@ class HandbookController:
                 )
             )
         if not tree.controls:
-            msg = (
-                "В избранном пока пусто — отметьте темы ★."
-                if only_fav
-                else "Ничего не найдено"
-            )
+            if only_fav:
+                msg = "В избранном пока пусто — отметьте темы ★."
+            elif not q and not self._handbook_sections:
+                # Пустой трек (Backend/Frontend/…): база ещё не наполнена.
+                msg = ("В этом направлении пока нет тем. Введите тему в поиск "
+                       "и сгенерируйте раздел с помощью ИИ, либо смените направление.")
+            else:
+                msg = "Ничего не найдено"
             tree.controls.append(
                 ft.Text(msg, italic=True, color=ft.Colors.ON_SURFACE_VARIANT)
             )
@@ -116,6 +119,24 @@ class HandbookController:
             )
         if self.main.page:
             self.main.page.update()
+
+    def set_handbook_track(self, track: str):
+        """Переключает направление учебника (M20): контент, прогресс, избранное."""
+        self.handbook.set_track(track)
+        self._current_topic = None
+        self._quiz_deck = []
+        self._handbook_sections = self.handbook.get_all_sections()
+        hb = self.main.view.handbook_tab
+        # Сбрасываем панель темы и выходим из квиза в обычный режим.
+        hb.topic_title.value = ""
+        hb.topic_badge.value = ""
+        hb.text_handbook.value = "Выберите вопрос в списке слева, чтобы увидеть ответ."
+        hb.btn_edit.visible = hb.btn_fav.visible = hb.btn_studied.visible = False
+        self._exit_edit_mode()
+        if self._hb_mode == "quiz":
+            self.set_handbook_mode("sections")
+        else:
+            self._render_handbook(hb.search_field.value or "")
 
     def set_handbook_mode(self, mode: str):
         self._hb_mode = mode
@@ -338,7 +359,7 @@ class HandbookController:
         def job():
             try:
                 question = self.main.analyzer.generate_quiz_question(
-                    topic["question"], topic["answer"]
+                    topic["question"], topic["answer"], persona=self.handbook.persona
                 )
             except Exception:
                 question = topic["question"]
@@ -428,7 +449,9 @@ class HandbookController:
             self.main.page.update()
 
         def job():
-            art = self.main.analyzer.generate_handbook_article(topic, context)
+            art = self.main.analyzer.generate_handbook_article(
+                topic, context, persona=self.handbook.persona
+            )
             if not art.get("answer"):
                 self.main._show_error(
                     "ИИ не смог сгенерировать материал. Попробуйте ещё раз."
