@@ -82,7 +82,7 @@ class MainController:
         self._file_picker = ft.FilePicker()
         page.services.append(self._file_picker)
         self._setup_logging_bridge()
-        self._restore_salary_field()
+        self._init_salary_field()
         self.refresh_table_data()
         self._load_handbook()
         self._refresh_resume_label()
@@ -888,10 +888,13 @@ class MainController:
         except Exception:
             pass
 
-    def _restore_salary_field(self):
+    def _init_salary_field(self):
+        """Восстанавливает ожидаемую з/п из настроек; при отсутствии — пробует извлечь из резюме."""
         exp = int(self.config.get("salary_expectation") or 0)
-        if exp:
-            self.view.scout_tab.salary_exp_field.value = str(exp)
+        if not exp:
+            self._try_autofill_salary()
+            exp = int(self.config.get("salary_expectation") or 0)
+        self.view.scout_tab.salary_exp_field.value = str(exp) if exp else ""
 
     def handle_salary_expectation_change(self, e):
         raw = (e.control.value or "").strip()
