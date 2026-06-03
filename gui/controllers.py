@@ -945,12 +945,11 @@ class MainController:
             self._show_error("Выберите вакансию.")
             return
         v = self.repo.get_vacancy_by_id(self.selected_vacancy_id)
-        system_msg = (
-            f"Ты — строгий Senior QA Lead в компании {v['company']}. "
-            f"Проводишь техническое интервью на позицию '{v['title']}'. "
-            f"Требования:\n{v['description']}\n\n"
-            "Представься и задай ОДИН технический вопрос по стеку. Не пиши за кандидата.")
+        fmt = self.view.interview_tab.combo_format.value or "tech"
+        system_msg = self.analyzer.get_interview_system_prompt(
+            fmt, v["company"], v["title"], v.get("description", ""))
         self.mock_chat_history = [{"role": "system", "content": system_msg}]
+        self._clear_report()
 
         def _start():
             reply = self.analyzer.generate_mock_reply(self.mock_chat_history)
@@ -959,6 +958,77 @@ class MainController:
             self._render_mock_chat()
 
         self._run_bg(_start, busy=self.view.interview_tab.btn_start)
+
+    def handle_evaluate_interview(self, e):
+        if len([m for m in self.mock_chat_history if m["role"] == "user"]) < 2:
+            self._show_error("Проведите хотя бы 2–3 обмена репликами перед оценкой.")
+            return
+        v = self.repo.get_vacancy_by_id(self.selected_vacancy_id) if self.selected_vacancy_id else {}
+        fmt = self.view.interview_tab.combo_format.value or "tech"
+
+        def job():
+            data = self.analyzer.evaluate_mock_interview(
+                self.mock_chat_history, fmt,
+                v.get("title", ""), v.get("company", ""))
+            self._render_report(data)
+
+        self._run_bg(job, busy=self.view.interview_tab.btn_evaluate)
+
+    def _clear_report(self):
+        iv = self.view.interview_tab
+        iv.report_placeholder.visible = True
+        iv.report_summary.value = ""
+        iv.report_competencies.controls.clear()
+        iv.report_strengths.value = ""
+        iv.report_improvements.value = ""
+        iv.report_recommendation.visible = False
+
+    def _render_report(self, data: dict):
+        iv = self.view.interview_tab
+        iv.report_placeholder.visible = False
+
+        iv.report_summary.value = data.get("summary", "")
+
+        iv.report_competencies.controls.clear()
+        for comp in data.get("competencies", []):
+            score = int(comp.get("score", 0))
+            color = (ft.Colors.GREEN_500 if score >= 7
+                     else ft.Colors.AMBER_700 if score >= 4
+                     else ft.Colors.RED_400)
+            iv.report_competencies.controls.append(ft.Column(spacing=2, controls=[
+                ft.Row(spacing=8, controls=[
+                    ft.Container(
+                        content=ft.Text(str(score), size=13, weight=ft.FontWeight.BOLD, color=color),
+                        bgcolor=ft.Colors.with_opacity(0.15, color),
+                        border_radius=20, padding=ft.Padding(8, 2, 8, 2),
+                        width=40, alignment=ft.Alignment(0, 0),
+                    ),
+                    ft.Text(comp.get("name", ""), size=13, weight=ft.FontWeight.W_500, expand=True),
+                ]),
+                ft.ProgressBar(value=score / 10, color=color),
+                ft.Text(comp.get("comment", ""), size=11, color=ft.Colors.ON_SURFACE_VARIANT),
+            ]))
+
+        strengths = data.get("strengths", [])
+        if strengths:
+            iv.report_strengths.value = "✅ " + "\n✅ ".join(strengths)
+
+        improvements = data.get("improvements", [])
+        if improvements:
+            iv.report_improvements.value = "📌 " + "\n📌 ".join(improvements)
+
+        rec = data.get("recommendation", "")
+        if rec:
+            color = (ft.Colors.GREEN_500 if "рекомендую" in rec.lower()
+                     else ft.Colors.AMBER_700 if "подготовка" in rec.lower()
+                     else ft.Colors.RED_400)
+            iv.report_recommendation.visible = True
+            iv.report_recommendation.bgcolor = ft.Colors.with_opacity(0.15, color)
+            iv.report_recommendation.content.value = rec
+            iv.report_recommendation.content.color = color
+
+        if self.page:
+            self.page.update()
 
     def handle_send_chat(self, e):
         user_text = self.view.interview_tab.input_chat.value.strip()
