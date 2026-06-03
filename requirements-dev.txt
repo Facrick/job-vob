@@ -1,0 +1,4 @@
+# Dev-инструменты (не нужны для запуска приложения)
+# Установка: pip install -r requirements-dev.txt
+ruff>=0.6
+pytest>=8.0

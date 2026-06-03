@@ -44,3 +44,7 @@ env/
 data/browser_user_data/
 playwright-report/
 test-results/
+
+# === DEV-ИНСТРУМЕНТЫ ===
+.pytest_cache/
+.ruff_cache/

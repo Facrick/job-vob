@@ -1,5 +1,8 @@
 """Общие утилиты, переиспользуемые между модулями core.
 
+html_to_markdown() — конвертирует HTML из handbook.json в Markdown
+для отображения в ft.Markdown без сторонних зависимостей.
+
 Единственная реализация parse_salary_text() — раньше логика была
 продублирована в ai_engine.VacancySalaryParser и
 parser.HHParser._parse_salary_text с расходящимся поведением.
@@ -7,10 +10,114 @@ parser.HHParser._parse_salary_text с расходящимся поведени�
 from __future__ import annotations
 
 import re
-from typing import Optional, Tuple
+from html.parser import HTMLParser
+
+# ──────────────────────────────────────────────────────────────────────────────
+#  HTML → Markdown
+# ──────────────────────────────────────────────────────────────────────────────
+
+class _HtmlToMd(HTMLParser):
+    """Минимальный конвертер HTML → Markdown без сторонних зависимостей."""
+
+    _BLOCK = {"h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "br",
+               "ul", "ol", "div", "blockquote"}
+    _HEADING_PREFIX = {"h1": "# ", "h2": "## ", "h3": "### ",
+                       "h4": "#### ", "h5": "##### ", "h6": "###### "}
+
+    def __init__(self):
+        super().__init__()
+        self._parts: list[str] = []
+        self._stack: list[str] = []
+        self._in_li = False
+        self._in_pre = False  # внутри блока кода <pre> не экранируем
+
+    def handle_starttag(self, tag, attrs):
+        self._stack.append(tag)
+        if tag == "pre":
+            self._in_pre = True
+            self._parts.append("\n```\n")
+        elif tag in self._HEADING_PREFIX:
+            self._parts.append("\n" + self._HEADING_PREFIX[tag])
+        elif tag == "li":
+            self._in_li = True
+            self._parts.append("\n- ")
+        elif tag == "br":
+            self._parts.append("  \n")
+        elif tag == "b" or tag == "strong":
+            self._parts.append("**")
+        elif tag == "i" or tag == "em":
+            self._parts.append("*")
+        elif tag == "code":
+            if not self._in_pre:           # внутри <pre> код уже в ``` ```
+                self._parts.append("`")
+        elif tag == "p":
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag):
+        if self._stack and self._stack[-1] == tag:
+            self._stack.pop()
+        if tag == "pre":
+            self._parts.append("\n```\n")
+            self._in_pre = False
+        elif tag in self._HEADING_PREFIX or tag in ("p", "li", "ul", "ol", "div"):
+            self._parts.append("\n")
+            if tag == "li":
+                self._in_li = False
+        elif tag in ("b", "strong"):
+            self._parts.append("**")
+        elif tag in ("i", "em"):
+            self._parts.append("*")
+        elif tag == "code":
+            if not self._in_pre:
+                self._parts.append("`")
+
+    def handle_data(self, data):
+        self._parts.append(data)
+
+    def result(self) -> str:
+        raw = "".join(self._parts)
+        # убираем тройные+ пустые строки
+        return re.sub(r"\n{3,}", "\n\n", raw).strip()
 
 
-def parse_salary_text(salary_text: str) -> Tuple[Optional[int], Optional[int]]:
+def html_to_markdown(html: str) -> str:
+    """Конвертирует HTML-строку в Markdown.
+
+    Используется для отображения ответов учебника в ft.Markdown.
+    """
+    if not html or not html.strip():
+        return ""
+    # Если нет HTML-тегов — возвращаем как есть
+    if "<" not in html:
+        return html
+    parser = _HtmlToMd()
+    parser.feed(html)
+    return parser.result()
+
+
+def strip_html(html: str) -> str:
+    """Грубо конвертирует HTML в читаемый плоский текст.
+
+    Описание вакансии из API hh.ru приходит в HTML; в UI оно показывается
+    как обычный текст (ft.Text), поэтому теги нужно убрать, а блочные
+    элементы превратить в переносы строк.
+    """
+    if not html:
+        return ""
+    import html as _html
+
+    text = html
+    text = re.sub(r"(?i)<li[^>]*>", "\n• ", text)
+    text = re.sub(r"(?i)<br\s*/?>", "\n", text)
+    text = re.sub(r"(?i)</(p|div|ul|ol|h[1-6]|tr)>", "\n", text)
+    text = re.sub(r"<[^>]+>", "", text)          # все оставшиеся теги
+    text = _html.unescape(text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n\s*\n+", "\n\n", text)
+    return text.strip()
+
+
+def parse_salary_text(salary_text: str) -> tuple[int | None, int | None]:
     """Парсит зарплатный диапазон из произвольной строки hh.ru.
 
     Поддерживает форматы:
@@ -58,16 +165,19 @@ def parse_salary_text(salary_text: str) -> Tuple[Optional[int], Optional[int]]:
     return None, None
 
 
-def extract_salary_from_resume(text: str) -> Optional[int]:
+def extract_salary_from_resume(text: str) -> int | None:
     """Извлекает ожидаемую зарплату из текста резюме.
 
     Возвращает None, если ничего не найдено — вызывающий код решает,
     что подставить (обычно дефолт из AppConfig).
     """
     patterns = [
-        r"(?:доход|зарплат|зп)[:\s]*(\d{1,3}(?:[\s]?\d{3})*)",
-        r"(\d{1,3}(?:[\s]?\d{3})*)[\s]*руб",
-        r"(\d{1,3}(?:[\s]?\d{3})*)[\s]*₽",
+        # Метка (зарплата/доход/зп/ожидания) + до 8 нецифровых разделителей + число.
+        # Раньше требовалось число СРАЗУ после "зарплат", из-за чего частое
+        # "Зарплата: 180 000" не находилось (мешало окончание "а:").
+        r"(?:доход|зарплат|зп|ожидани\w*)[^\d]{0,8}(\d{1,3}(?:[\s ]?\d{3})*)",
+        r"(\d{1,3}(?:[\s ]?\d{3})*)\s*руб",
+        r"(\d{1,3}(?:[\s ]?\d{3})*)\s*₽",
     ]
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)

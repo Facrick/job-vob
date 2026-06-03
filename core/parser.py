@@ -1,13 +1,13 @@
-import random
-import time
-import re
 import logging
-from typing import List, Dict, Optional, Callable, Tuple
+import random
+import re
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from bs4 import BeautifulSoup
-from playwright.sync_api import sync_playwright, Page
+from playwright.sync_api import Page, sync_playwright
 
 from core.config import AppConfig
 from core.utils import parse_salary_text
@@ -19,13 +19,13 @@ class VacancyInfo:
     id: str
     title: str
     company: str
-    salary_min: Optional[int]
-    salary_max: Optional[int]
+    salary_min: int | None
+    salary_max: int | None
     description: str
     skills: str
     url: str
 
-    def to_dict(self) -> Dict:
+    def to_dict(self) -> dict:
         return {
             "id": self.id,
             "title": self.title,
@@ -98,12 +98,14 @@ class HHParser:
     # Маркеры в URL, на который hh.ru редиректит при блокировке.
     CAPTCHA_URL_MARKERS = ["/captcha", "captcha_key", "/blocked"]
 
-    def __init__(self, config: Optional[AppConfig] = None, proxy_url: Optional[str] = None):
+    def __init__(self, config: AppConfig | None = None, proxy_url: str | None = None):
         # Конфиг можно передать снаружи (переиспользование одного AppConfig
         # на всё приложение), либо создаётся свой.
         self.config = config or AppConfig()
         self.human_engine = HumanInteractionEngine(self.config)
         self.proxy = {"server": proxy_url} if proxy_url else None
+        # Headless по умолчанию: анализ вакансий идёт без видимого окна Chrome.
+        self.headless = bool(self.config.get("browser_headless"))
         self.user_data_dir = Path("data/browser_user_data")
         self.user_data_dir.mkdir(parents=True, exist_ok=True)
 
@@ -179,9 +181,9 @@ class HHParser:
         experience: str = "between1And3",
         schedule: str = "remote",
         page_limit: int = 1,
-        progress_callback: Optional[Callable] = None,
-        max_vacancies: Optional[int] = None,
-    ) -> List[Dict]:
+        progress_callback: Callable | None = None,
+        max_vacancies: int | None = None,
+    ) -> list[dict]:
         seen_ids = self._get_seen_ids()
         discovered_links = []
 
@@ -189,11 +191,12 @@ class HHParser:
             max_vacancies = self.config.get("max_vacancies_per_search")
 
         with sync_playwright() as p:
-            logging.info(f"[Playwright] Запуск поиска по запросу: {text}")
+            mode = "headless (без окна)" if self.headless else "с видимым окном"
+            logging.info(f"🔍 Поиск вакансий по запросу «{text}» — режим {mode}")
 
             context = p.chromium.launch_persistent_context(
                 user_data_dir=str(self.user_data_dir),
-                headless=False,
+                headless=self.headless,
                 user_agent=random.choice(self.user_agents),
                 proxy=self.proxy,
                 viewport={"width": 1280, "height": 800},
@@ -216,7 +219,7 @@ class HHParser:
                     if schedule:
                         search_url += f"&schedule={schedule}"
 
-                    logging.info(f"Загрузка страницы {current_page + 1}/{page_limit}")
+                    logging.info(f"📄 Открываю страницу результатов {current_page + 1}/{page_limit}")
                     page.goto(
                         search_url,
                         timeout=self.config.get("browser_timeout_ms"),
@@ -224,17 +227,23 @@ class HHParser:
                     )
 
                     if self._is_captcha_page(page):
-                        logging.warning("⚠️ ОБНАРУЖЕНА КАПЧА! Решите её вручную в открытом окне браузера.")
+                        if self.headless:
+                            # В headless нет окна, где решить капчу — останавливаемся понятно.
+                            raise RuntimeError(
+                                "hh.ru запросил капчу. В headless-режиме её решить нельзя. "
+                                "Отключите 'browser_headless' в настройках и повторите поиск."
+                            )
+                        logging.warning("⚠️ Капча — решите её вручную в открытом окне браузера...")
                         try:
                             page.wait_for_selector(
                                 '[data-qa="vacancy-serp__vacancy"]', timeout=120000
                             )
-                            logging.info("✅ Капча решена, продолжаем парсинг...")
+                            logging.info("✅ Капча решена, продолжаю парсинг...")
                         except Exception:
-                            raise Exception(
+                            raise RuntimeError(
                                 "Таймаут ожидания решения капчи (2 мин). "
                                 "Остановите парсинг и попробуйте снова."
-                            )
+                            ) from None
 
                     self.human_engine.move_mouse_randomly(page)
                     self.human_engine.random_scroll(page)
@@ -256,26 +265,32 @@ class HHParser:
                                     if len(discovered_links) >= max_vacancies:
                                         break
 
-                logging.info(f"Найдено {len(discovered_links)} новых вакансий")
+                total = len(discovered_links)
+                logging.info(f"🆕 Найдено новых вакансий: {total}. Начинаю детальный разбор...")
 
                 final_vacancies = []
                 for idx, v in enumerate(discovered_links, 1):
+                    label = v["name"][:60]
+                    logging.info(f"⏳ [{idx}/{total}] Обрабатываю: {label}")
                     if progress_callback:
-                        progress_callback(idx, len(discovered_links))
+                        progress_callback(idx, total, label)
 
                     try:
                         vacancy_info = self._parse_vacancy_detail(page, v["id"], v["name"])
                         if vacancy_info:
                             final_vacancies.append(vacancy_info.to_dict())
+                            logging.info(f"✅ [{idx}/{total}] Сохранено: {vacancy_info.company} — {label}")
                     except Exception as e:
                         if self._looks_like_captcha_error(str(e)):
                             logging.warning(f"⚠️ Капча на вакансии {v['id']}. Пауза 30 сек...")
                             time.sleep(30)
                         else:
-                            logging.error(f"Ошибка парсинга вакансии {v['id']}: {e}")
+                            logging.error(f"❌ Ошибка разбора вакансии {v['id']}: {e}")
                         continue
 
                     time.sleep(random.uniform(2, 5))
+
+                logging.info(f"🏁 Готово. Успешно разобрано: {len(final_vacancies)} из {total}")
 
                 return final_vacancies
 
@@ -284,7 +299,7 @@ class HHParser:
 
     def _parse_vacancy_detail(
         self, page: Page, vacancy_id: str, title: str
-    ) -> Optional[VacancyInfo]:
+    ) -> VacancyInfo | None:
         url = f"https://hh.ru/vacancy/{vacancy_id}"
         logging.debug(f"Парсинг карточки: {url}")
 
@@ -373,17 +388,31 @@ class HHParser:
         except Exception:
             return default
 
-    def auto_apply(self, vacancy_id: str, letter_text: str) -> Tuple[bool, str]:
+    def auto_apply(self, vacancy_id: str, letter_text: str) -> tuple[bool, str]:
         with sync_playwright() as p:
-            logging.info(f"[Auto-Apply] Отклик на вакансию {vacancy_id}")
+            logging.info(f"📨 Отправляю отклик на вакансию {vacancy_id}...")
 
             context = p.chromium.launch_persistent_context(
                 user_data_dir=str(self.user_data_dir),
-                headless=False,
+                headless=self.headless,
                 user_agent=random.choice(self.user_agents),
                 viewport={"width": 1280, "height": 800},
             )
             page = context.new_page()
+
+            def first_visible(selectors, timeout_ms=5000):
+                """Первый видимый элемент из списка селекторов (с ожиданием)."""
+                deadline = time.time() + timeout_ms / 1000
+                while time.time() < deadline:
+                    for sel in selectors:
+                        loc = page.locator(sel).first
+                        try:
+                            if loc.count() and loc.is_visible():
+                                return loc
+                        except Exception:
+                            continue
+                    page.wait_for_timeout(250)
+                return None
 
             try:
                 page.goto(
@@ -392,32 +421,61 @@ class HHParser:
                     wait_until="domcontentloaded",
                 )
 
-                apply_btn = page.locator('a[data-qa="vacancy-response-link-top"]').first
-                if not apply_btn.is_visible():
-                    return False, "Кнопка 'Откликнуться' не найдена. Возможно, отклик уже отправлен."
+                apply_btn = first_visible([
+                    'a[data-qa="vacancy-response-link-top"]',
+                    '[data-qa="vacancy-response-link-top"]',
+                    'button[data-qa="vacancy-response-link-top"]',
+                ])
+                if not apply_btn:
+                    return False, ("Кнопка «Откликнуться» не найдена. Возможно, отклик уже "
+                                   "отправлен или требуется авторизация на hh.ru в этом окне.")
 
+                logging.info("🖱 Нажимаю «Откликнуться»...")
                 apply_btn.click()
-                page.wait_for_timeout(2000)
+                page.wait_for_timeout(2500)
 
-                letter_toggle = page.locator('button[data-qa="vacancy-response-letter-toggle"]')
-                if letter_toggle.is_visible():
-                    letter_toggle.click()
+                # Раскрываем поле письма, если оно скрыто за тоглом/ссылкой
+                toggle = first_visible([
+                    '[data-qa="vacancy-response-letter-toggle"]',
+                    'button:has-text("Сопроводительное письмо")',
+                    'text=Добавить сопроводительное',
+                ], timeout_ms=2500)
+                if toggle:
+                    logging.info("✉️ Раскрываю поле сопроводительного письма...")
+                    toggle.click()
                     page.wait_for_timeout(1000)
 
-                letter_textarea = page.locator(
-                    'textarea[data-qa="vacancy-response-popup-form-letter-input"]'
-                )
-                if letter_textarea.is_visible():
-                    letter_textarea.fill(letter_text[:3000])
-                    page.wait_for_timeout(1500)
+                # Поле письма ОБЯЗАТЕЛЬНО: без него отклик не отправляем.
+                textarea = first_visible([
+                    'textarea[data-qa="vacancy-response-popup-form-letter-input"]',
+                    'textarea[data-qa="vacancy-response-letter-input"]',
+                    'textarea[name="text"]',
+                    '.vacancy-response-popup textarea',
+                ], timeout_ms=6000)
+                if not textarea:
+                    logging.error("❌ Поле письма не найдено — отклик НЕ отправлен.")
+                    return False, ("Не удалось прикрепить сопроводительное письмо: поле ввода "
+                                   "не найдено. Отклик не отправлен (чтобы не уйти без письма).")
 
-                submit_btn = page.locator('button[data-qa="vacancy-response-submit-popup"]')
-                if submit_btn.is_visible():
-                    submit_btn.click()
-                    page.wait_for_timeout(3000)
-                    return True, "Автоотклик успешно отправлен!"
+                logging.info("⌨️ Вставляю текст сопроводительного письма...")
+                textarea.fill(letter_text[:3000])
+                page.wait_for_timeout(1000)
+                if not (textarea.input_value() or "").strip():
+                    return False, "Письмо не вставилось в поле. Отклик не отправлен."
 
-                return False, "Не удалось найти кнопку подтверждения отправки."
+                submit_btn = first_visible([
+                    'button[data-qa="vacancy-response-submit-popup"]',
+                    '[data-qa="vacancy-response-letter-submit"]',
+                    'button[data-qa="vacancy-response-submit"]',
+                    '.vacancy-response-popup button[type="submit"]',
+                ], timeout_ms=4000)
+                if not submit_btn:
+                    return False, "Не найдена кнопка отправки отклика."
+
+                logging.info("📤 Отправляю отклик вместе с письмом...")
+                submit_btn.click()
+                page.wait_for_timeout(3000)
+                return True, "Автоотклик с сопроводительным письмом отправлен!"
 
             except Exception as e:
                 logging.error(f"[Auto-Apply] Ошибка: {e}")

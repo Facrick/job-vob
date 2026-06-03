@@ -5,21 +5,46 @@ from typing import Any
 
 
 class AppConfig:
-    """Компонент централизованного управления конфигурациями и тайм-аутами приложения"""
+    """Централизованные настройки и тайм-ауты приложения.
 
-    def __init__(self, config_path: str = "data/settings.json"):
-        self.config_path = Path(config_path)
+    Реализован как синглтон (по пути файла): раньше AppConfig() создавался
+    в LetterAnalyzer, ResumeEntity и HHParser независимо — каждый читал и
+    мог перезаписывать settings.json. Теперь один экземпляр на путь.
+    """
+
+    _instances: dict = {}
+
+    def __new__(cls, config_path: str | None = None):
+        from core.paths import user_path
+        key = str(config_path) if config_path else str(user_path("data/settings.json"))
+        instance = cls._instances.get(key)
+        if instance is None:
+            instance = super().__new__(cls)
+            cls._instances[key] = instance
+        return instance
+
+    def __init__(self, config_path: str | None = None):
+        if getattr(self, "_initialized", False):
+            return
+        self._initialized = True
+
+        from core.paths import user_path
+        self.config_path = Path(config_path) if config_path else user_path("data/settings.json")
         self.defaults = {
             "llm_model": "llama-3.3-70b-versatile",
+            "llm_fallback_model": "llama-3.1-8b-instant",
+            "llm_analysis_model": "llama-3.1-8b-instant",  # анализ вакансии — быстрая модель
             "llm_temperature_generation": 0.15,
             "llm_temperature_adjustment": 0.3,
+            "use_official_api": True,   # основной источник — api.hh.ru (фолбэк: парсер)
+            "browser_headless": True,   # анализ вакансий без видимого окна Chrome
             "browser_timeout_ms": 40000,
             "human_mouse_steps_min": 10,
             "human_mouse_steps_max": 25,
             "base_delay_ms_min": 1500,
             "base_delay_ms_max": 3000,
-            "default_salary": 160000,
             "max_vacancies_per_search": 50,
+            "salary_expectation": 0,
         }
         self.settings: dict = {}
         self.load_config()
@@ -28,7 +53,7 @@ class AppConfig:
         """Загрузка конфигурации из файла с созданием дефолтной при отсутствии"""
         try:
             if self.config_path.exists():
-                with open(self.config_path, "r", encoding="utf-8") as f:
+                with open(self.config_path, encoding="utf-8") as f:
                     self.settings = json.load(f)
                 logging.info(f"[Config] Настройки успешно загружены из {self.config_path}")
             else:
@@ -80,14 +105,50 @@ class PromptRepository:
         return "Верни JSON с ключом 'letter': обновленный текст письма."
 
     @staticmethod
-    def get_mock_interview_system_prompt(vacancy_title: str, handbook_topics: list) -> str:
-        topics_str = ", ".join(handbook_topics[:10])
+    def get_vacancy_analysis_instruction() -> str:
         return (
-            f"Ты — строгий Senior QA Lead. Проводи техническое собеседование на позицию '{vacancy_title}'.\n\n"
-            f"Темы для вопросов: {topics_str}\n\n"
-            "Правила:\n"
-            "- Задавай по одному вопросу за раз\n"
-            "- После ответа кандидата давай краткую обратную связь\n"
-            "- В конце каждого ответа спрашивай 'Готовы продолжить?'\n"
-            "- Оценивай глубину понимания, а не заучивание\n"
+            "Ты — Senior QA Engineer и карьерный аналитик. Проанализируй вакансию "
+            "и (если есть) резюме кандидата. Будь конкретным и техническим, без воды.\n\n"
+            "Верни СТРОГО JSON-объект со следующими ключами:\n"
+            "{\n"
+            '  "summary": "1-2 предложения: суть роли и грейд",\n'
+            '  "key_requirements": ["3-6 главных требований вакансии"],\n'
+            '  "stack": ["ключевые технологии и инструменты из вакансии"],\n'
+            '  "match": "2-3 предложения: насколько резюме соответствует вакансии",\n'
+            '  "highlights": ["на чём кандидату сделать акцент в отклике"],\n'
+            '  "gaps": ["КОРОТКИЕ названия навыков/технологий (1-3 слова), которых '
+            "не хватает кандидату\"]\n"
+            "}\n"
+            "ВАЖНО про gaps: это список КОНКРЕТНЫХ навыков/инструментов одним-двумя "
+            "словами (например: \"Docker\", \"Kafka\", \"REST Assured\", "
+            "\"Нагрузочное тестирование\"), а НЕ предложения и НЕ общие фразы вроде "
+            "\"углубить знания\". Каждый пункт — отдельный навык.\n"
+            "Если резюме не предоставлено — в match/highlights/gaps опирайся только "
+            "на вакансию и пиши общие рекомендации. Никогда не выдумывай факты о кандидате."
+        )
+
+    @staticmethod
+    def get_handbook_article_instruction() -> str:
+        return (
+            "Ты — Senior QA/AQA инженер и автор учебных материалов. Напиши краткую, "
+            "но содержательную статью-раздел учебника по заданной теме на русском языке.\n\n"
+            "Формат ответа — СТРОГО JSON с двумя ключами:\n"
+            "{\n"
+            '  "question": "Короткое название темы (заголовок раздела)",\n'
+            '  "answer": "Текст статьи в Markdown"\n'
+            "}\n\n"
+            "Требования к полю answer (Markdown):\n"
+            "- используй ### для подзаголовков, списки через -, **жирный** для акцентов, "
+            "`инлайн-код` и блоки кода в тройных бэктиках ```;\n"
+            "- 3–6 смысловых блоков: что это, зачем, ключевые моменты, пример;\n"
+            "- по делу, без воды, с практическим уклоном для подготовки к собеседованию."
+        )
+
+    @staticmethod
+    def get_handbook_revise_instruction() -> str:
+        return (
+            "Ты — редактор учебных материалов по QA/AQA. Тебе дают текущий текст "
+            "раздела (Markdown) и пожелания по правкам. Верни ТОЛЬКО исправленный "
+            "текст раздела в Markdown — без пояснений, преамбул и обрамляющих кавычек. "
+            "Сохраняй формат Markdown (###, списки -, `код`, блоки ```)."
         )
