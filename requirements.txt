@@ -1,0 +1,16 @@
+# UI (Flet 0.85 — API заметно отличается от 0.7x, версия зафиксирована)
+flet>=0.85,<0.86
+
+# Парсинг hh.ru
+playwright>=1.42.0
+beautifulsoup4>=4.12.3
+lxml>=5.3.0
+
+# Генерация писем (Groq LLM)
+groq>=0.4.0
+python-dotenv>=1.0.1
+
+# Чтение резюме (PDF) и графики аналитики
+pypdf>=4.2.0
+matplotlib>=3.9.0
+pillow>=11.0.0
