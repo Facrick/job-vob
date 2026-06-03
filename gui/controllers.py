@@ -513,21 +513,23 @@ class MainController:
             return ft.Colors.AMBER_700
         return ft.Colors.RED_400
 
-    def _salary_chip(self, s_min, s_max) -> ft.Control:
-        label = self._format_salary(s_min, s_max)
+    def _salary_color(self, s_min, s_max):
         expectation = int(self.config.get("salary_expectation") or 0)
         if not expectation or (s_min is None and s_max is None):
-            color = ft.Colors.ON_SURFACE_VARIANT
-            bg = None
-        else:
-            upper = s_max if s_max is not None else s_min
-            lower = s_min if s_min is not None else s_max
-            if lower >= expectation:
-                color, bg = ft.Colors.GREEN_500, ft.Colors.with_opacity(0.15, ft.Colors.GREEN_500)
-            elif upper >= expectation:
-                color, bg = ft.Colors.AMBER_700, ft.Colors.with_opacity(0.15, ft.Colors.AMBER_700)
-            else:
-                color, bg = ft.Colors.RED_400, ft.Colors.with_opacity(0.15, ft.Colors.RED_400)
+            return ft.Colors.ON_SURFACE_VARIANT
+        upper = s_max if s_max is not None else s_min
+        lower = s_min if s_min is not None else s_max
+        if lower >= expectation:
+            return ft.Colors.GREEN_500
+        if upper >= expectation:
+            return ft.Colors.AMBER_700
+        return ft.Colors.RED_400
+
+    def _salary_chip(self, s_min, s_max) -> ft.Control:
+        label = self._format_salary(s_min, s_max)
+        color = self._salary_color(s_min, s_max)
+        bg = (ft.Colors.with_opacity(0.15, color)
+              if color != ft.Colors.ON_SURFACE_VARIANT else None)
         return ft.Container(
             content=ft.Text(label, size=11, color=color),
             bgcolor=bg, border_radius=20, padding=ft.Padding(8, 3, 8, 3))
@@ -620,6 +622,7 @@ class MainController:
             score = v.get("match_score")
             match_part = f"   ·   Match {int(score)}%" if score is not None else ""
             scout.detail_meta.value = f"{v.get('company', 'Не указана')}   ·   {salary}{match_part}"
+            scout.detail_meta.color = self._salary_color(v.get("salary_min"), v.get("salary_max"))
             scout.detail_skills.value = v.get("skills") or "Не указаны"
             scout.detail_description.value = v.get("description") or "Описание отсутствует."
             scout.detail_analysis.value = "_Нажмите «Анализ ИИ», чтобы получить разбор вакансии._"
