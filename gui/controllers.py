@@ -687,7 +687,8 @@ class MainController:
         period   = scout.combo_period.value   or "7"
         exp      = scout.combo_exp.value      or "between1And3"
         area     = scout.combo_area.value     or "113"
-        schedule = scout.combo_schedule.value or "remote"
+        # Пустая строка = "Все форматы" — не заменяем на "remote"
+        schedule = scout.combo_schedule.value if scout.combo_schedule.value is not None else ""
 
         scout.search_progress.value = None
         scout.search_progress.visible = True
@@ -706,7 +707,7 @@ class MainController:
                 logging.info("🧹 Удалены ранее найденные необработанные вакансии (статус «Новая»).")
                 vacancies = SearchService().search(
                     text=keyword, period=int(period), area=int(area), experience=exp,
-                    schedule=schedule, page_limit=1, progress_callback=progress)
+                    schedule=schedule, page_limit=3, progress_callback=progress)
                 resume_text = self._safe_resume_text()
                 for v in vacancies:
                     v["match_score"] = compute_match_score(resume_text, v)

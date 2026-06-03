@@ -70,14 +70,17 @@ class ScoutTabView:
             ft.DropdownOption(key="30", text="За месяц"),
         ])
         self.combo_exp = ft.Dropdown(label="Опыт", value="between1And3", col=self._C, dense=True, options=[
-            ft.DropdownOption(key="between1And3", text="1–3 года"),
             ft.DropdownOption(key="noExperience",  text="Без опыта"),
+            ft.DropdownOption(key="between1And3",  text="1–3 года"),
             ft.DropdownOption(key="between3And6",  text="3–6 лет"),
+            ft.DropdownOption(key="moreThan6",     text="Более 6 лет"),
         ])
         self.combo_schedule = ft.Dropdown(label="Формат", value="remote", col=self._C, dense=True, options=[
-            ft.DropdownOption(key="remote",  text="Удалённая"),
-            ft.DropdownOption(key="",        text="Все форматы"),
-            ft.DropdownOption(key="fullDay", text="Полный день"),
+            ft.DropdownOption(key="remote",   text="Удалённая"),
+            ft.DropdownOption(key="fullDay",  text="Полный день"),
+            ft.DropdownOption(key="flexible", text="Гибкий"),
+            ft.DropdownOption(key="shift",    text="Вахта"),
+            ft.DropdownOption(key="",         text="Все форматы"),
         ])
         self.combo_area = ft.Dropdown(label="Регион", value="113", col=self._C, dense=True, options=[
             ft.DropdownOption(key="113", text="Вся Россия"),
