@@ -1,12 +1,10 @@
 import logging
-import random
 import shutil
 import threading
 import webbrowser
 from logging.handlers import RotatingFileHandler
 
 import flet as ft
-from matplotlib.figure import Figure
 
 from core.ai_engine import LetterAnalyzer, ResumeEntity
 from core.config import AppConfig
@@ -18,7 +16,7 @@ from core.parser import HHParser
 from core.paths import user_path
 from core.search_service import SearchService
 from core.skill_heatmap import GRADE_COLORS, extract_top_skills
-from core.utils import extract_salary_from_resume, html_to_markdown
+from core.utils import extract_salary_from_resume
 from gui.handbook_controller import HandbookController
 
 

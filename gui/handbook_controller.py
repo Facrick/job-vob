@@ -420,11 +420,6 @@ class HandbookController:
 
         self.main._run_bg(job, busy=hb.btn_ai_fix)
 
-    def handle_handbook_generate(self, e):
-        topic = (self.main.view.handbook_tab.search_field.value or "").strip()
-        if topic:
-            self._generate_handbook_topic(topic)
-
     def _generate_handbook_topic(self, topic: str, context: str = ""):
         hb = self.main.view.handbook_tab
         hb.text_handbook.value = f"⏳ ИИ пишет раздел «{topic}»..."

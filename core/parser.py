@@ -4,7 +4,6 @@ import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
 
 from bs4 import BeautifulSoup
 from playwright.sync_api import Page, sync_playwright

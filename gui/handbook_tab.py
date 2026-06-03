@@ -1,6 +1,5 @@
 import flet as ft
-from gui.components import primary_btn, secondary_btn, card, page_column, section_title, GAP
-from core.utils import html_to_markdown
+from gui.components import primary_btn, secondary_btn, card, GAP
 
 class HandbookTabView:
     def __init__(self, controller):
