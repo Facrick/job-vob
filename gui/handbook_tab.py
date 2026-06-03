@@ -8,16 +8,30 @@ class HandbookTabView:
         self.search_field = ft.TextField(hint_text="Поиск по темам...", dense=True,
                                          prefix_icon=ft.Icons.SEARCH,
                                          on_change=controller.handle_handbook_search)
-        self.btn_mode_sections = ft.TextButton(content=ft.Text("Разделы"), icon=ft.Icons.MENU_BOOK,
-                                               on_click=lambda e: controller.set_handbook_mode("sections"))
-        self.btn_mode_fav = ft.TextButton(content=ft.Text("Избранное"), icon=ft.Icons.STAR,
-                                          on_click=lambda e: controller.set_handbook_mode("favorites"))
-        self.btn_mode_plan = ft.TextButton(content=ft.Text("План"), icon=ft.Icons.CHECKLIST,
-                                           on_click=lambda e: controller.set_handbook_mode("plan"))
-        self.btn_mode_cards = ft.TextButton(content=ft.Text("Карточки"), icon=ft.Icons.STYLE,
-                                            on_click=lambda e: controller.set_handbook_mode("cards"))
-        self.btn_mode_quiz = ft.TextButton(content=ft.Text("Квиз"), icon=ft.Icons.PSYCHOLOGY,
-                                           on_click=lambda e: controller.set_handbook_mode("quiz"))
+
+        _MODES = [
+            ("sections",  ft.Icons.MENU_BOOK,  "Разделы"),
+            ("favorites", ft.Icons.STAR,        "Избранное"),
+            ("plan",      ft.Icons.CHECKLIST,   "План"),
+            ("quiz",      ft.Icons.PSYCHOLOGY,  "Квиз"),
+        ]
+
+        # Горизонтальный скроллируемый ряд кнопок режимов.
+        # SegmentedButton не используется — он не скроллируется и рендерится
+        # колесом при нехватке ширины в Flet 0.85.
+        self._mode_btns: dict[str, ft.TextButton] = {}
+        self.mode_bar = ft.Row(scroll=ft.ScrollMode.AUTO, spacing=2)
+        for val, icon, label in _MODES:
+            btn = ft.TextButton(
+                content=ft.Row(
+                    [ft.Icon(icon, size=16), ft.Text(label, size=12)],
+                    spacing=4, tight=True,
+                ),
+                on_click=lambda e, m=val: controller.set_handbook_mode(m),
+            )
+            self._mode_btns[val] = btn
+            self.mode_bar.controls.append(btn)
+        self.set_active_mode("sections")
 
         self.progress_label = ft.Text("Прогресс 0% (0 из 0)", size=11, color=ft.Colors.ON_SURFACE_VARIANT)
         self.progress_bar = ft.ProgressBar(value=0, color=ft.Colors.GREEN_500)
@@ -52,50 +66,46 @@ class HandbookTabView:
             ft.Row([self.btn_save, self.btn_cancel], spacing=8),
         ])
 
-        # Флеш-карточки
-        self.cards_scope = ft.Dropdown(label="Что повторяем", value="all", dense=True, options=[
-            ft.DropdownOption(key="all",       text="Все темы"),
-            ft.DropdownOption(key="favorites", text="Только избранное"),
-            ft.DropdownOption(key="unstudied", text="Ещё не изученные"),
-        ])
-        self.btn_cards_start = primary_btn("Начать", controller.handle_cards_start, icon=ft.Icons.PLAY_ARROW)
-        self.cards_controls = ft.Column(visible=False, spacing=10, controls=[
-            ft.Text("Режим повторения карточками", weight=ft.FontWeight.W_600),
-            self.cards_scope, self.btn_cards_start,
-        ])
-        self.card_progress = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
-        self.card_question = ft.Text("Выберите область и нажмите «Начать».", size=18, weight=ft.FontWeight.BOLD)
-        self.btn_reveal = primary_btn("Показать ответ", controller.handle_cards_reveal, icon=ft.Icons.VISIBILITY)
-        self.btn_reveal.visible = False
-        self.card_answer = ft.Markdown("", selectable=True, extension_set=ft.MarkdownExtensionSet.GITHUB_WEB)
-        self.card_answer_box = ft.Column(expand=True, scroll=ft.ScrollMode.AUTO, visible=False,
-                                         controls=[self.card_answer])
-        self.btn_know = primary_btn("Знаю", controller.handle_cards_know, icon=ft.Icons.CHECK,
-                                    bgcolor=ft.Colors.GREEN, color=ft.Colors.WHITE)
-        self.btn_repeat = secondary_btn("Повторить", controller.handle_cards_repeat, icon=ft.Icons.REFRESH)
-        self.card_actions = ft.Row([self.btn_know, self.btn_repeat], spacing=8, visible=False)
-        self.card_box = ft.Column(expand=True, spacing=12, visible=False, controls=[
-            self.card_progress,
-            ft.Container(content=self.card_question, padding=ft.Padding(0, 20, 0, 8)),
-            self.btn_reveal, self.card_answer_box, self.card_actions,
-        ])
-        
-        # Квиз
-        self.quiz_question = ft.Text("Выберите тему из списка слева для прохождения квиза.", size=18, weight=ft.FontWeight.BOLD)
-        self.quiz_input = ft.TextField(label="Ваш ответ", multiline=True, min_lines=4, max_lines=10, expand=True)
-        self.quiz_btn_check = primary_btn("Проверить", controller.handle_quiz_check, icon=ft.Icons.AUTO_AWESOME)
-        self.quiz_progress = ft.ProgressRing(visible=False)
-        self.quiz_result = ft.Column(spacing=15)
-        self.quiz_input_box = ft.Column(spacing=15, visible=False, controls=[
-            ft.Text("Сформулируйте ответ своими словами. ИИ оценит полноту и корректность.", color=ft.Colors.ON_SURFACE_VARIANT),
-            self.quiz_input,
-            ft.Row([self.quiz_btn_check, self.quiz_progress], alignment=ft.MainAxisAlignment.END),
-            self.quiz_result
-        ])
+        # Квиз — AI-driven session
+        self.quiz_scope = ft.Dropdown(
+            label="Тема квиза", value="all", dense=True, width=200,
+            options=[
+                ft.DropdownOption(key="all", text="Все темы"),
+                ft.DropdownOption(key="favorites", text="Только избранное"),
+            ]
+        )
+        self.btn_quiz_start = primary_btn("Начать квиз", controller.handle_quiz_start, icon=ft.Icons.PLAY_ARROW)
+        self.btn_quiz_next = primary_btn("Следующий вопрос", controller.handle_quiz_next, icon=ft.Icons.SKIP_NEXT)
+        self.btn_quiz_next.visible = False
+        self.quiz_progress_label = ft.Text("", size=12, color=ft.Colors.ON_SURFACE_VARIANT)
+        self.quiz_question_text = ft.Text("", size=16, weight=ft.FontWeight.W_600, selectable=True)
+        self.quiz_answer_input = ft.TextField(
+            label="Ваш ответ", multiline=True, min_lines=4, max_lines=10, expand=True,
+            visible=False,
+        )
+        self.btn_quiz_check = primary_btn("Проверить ответ", controller.handle_quiz_check, icon=ft.Icons.AUTO_AWESOME)
+        self.btn_quiz_check.visible = False
+        self.quiz_spinner = ft.ProgressRing(visible=False, width=24, height=24)
+        self.quiz_eval_chip = ft.Chip(label=ft.Text(""), visible=False)
+        self.quiz_feedback_text = ft.Markdown("", selectable=True, extension_set=ft.MarkdownExtensionSet.GITHUB_WEB, visible=False)
+        self.quiz_correct_answer = ft.Markdown("", selectable=True, extension_set=ft.MarkdownExtensionSet.GITHUB_WEB, visible=False)
+        self.quiz_correct_label = ft.Text("📖 Правильный ответ из учебника:", size=13, weight=ft.FontWeight.W_600, color=ft.Colors.INDIGO_200, visible=False)
+
         self.quiz_box = ft.Column(expand=True, spacing=15, visible=False, scroll=ft.ScrollMode.AUTO, controls=[
-            self.quiz_question,
+            # Setup row
+            ft.Row([self.quiz_scope, self.btn_quiz_start, ft.Container(expand=True), self.quiz_progress_label, self.quiz_spinner], spacing=8),
             ft.Divider(),
-            self.quiz_input_box
+            # Question
+            self.quiz_question_text,
+            # Answer input
+            self.quiz_answer_input,
+            ft.Row([self.btn_quiz_check, self.btn_quiz_next], spacing=8),
+            # Result
+            self.quiz_eval_chip,
+            self.quiz_feedback_text,
+            ft.Divider(visible=False),  # shown after evaluation
+            self.quiz_correct_label,
+            self.quiz_correct_answer,
         ])
 
         # Панель темы (персистентна)
@@ -107,14 +117,22 @@ class HandbookTabView:
             self.view_box, self.edit_box,
         ])
 
+    def set_active_mode(self, mode: str):
+        """Подсвечивает активную кнопку режима, сбрасывает остальные."""
+        _ACTIVE = ft.ButtonStyle(
+            bgcolor=ft.Colors.with_opacity(0.15, ft.Colors.INDIGO_300),
+            color=ft.Colors.INDIGO_200,
+        )
+        for val, btn in self._mode_btns.items():
+            btn.style = _ACTIVE if val == mode else None
+
     def build(self, wide: bool = True) -> ft.Control:
         left = card(ft.Column(expand=True, spacing=8, controls=[
-            ft.Row([self.btn_mode_sections, self.btn_mode_fav, self.btn_mode_plan, self.btn_mode_cards, self.btn_mode_quiz],
-                   scroll=ft.ScrollMode.AUTO, spacing=2),
+            self.mode_bar,
             self.progress_label, self.progress_bar, self.search_field,
-            self.tree_handbook, self.cards_controls,
+            self.tree_handbook,
         ]), expand=True, padding=10)
-        right = card(ft.Column(expand=True, controls=[self.topic_pane, self.card_box, self.quiz_box]), expand=True)
+        right = card(ft.Column(expand=True, controls=[self.topic_pane, self.quiz_box]), expand=True)
         if wide:
             return ft.Row(expand=True, spacing=GAP, controls=[
                 ft.Container(width=340, content=left), right,

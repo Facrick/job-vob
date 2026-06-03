@@ -10,28 +10,11 @@ class AnalyticsTabView:
     def __init__(self, controller):
         self.controller = controller
         self.funnel_box = ft.Column(spacing=12)
-        self.chart_image = ft.Image(
-            src="data/chart.png", expand=True, fit=ft.BoxFit.CONTAIN, visible=False
-        )
-        self.placeholder = ft.Container(
-            expand=True,
-            alignment=ft.Alignment(0, 0),
-            content=ft.Column(
-                tight=True,
-                spacing=12,
-                horizontal_alignment=ft.CrossAxisAlignment.CENTER,
-                controls=[
-                    ft.Icon(
-                        ft.Icons.INSERT_CHART_OUTLINED,
-                        size=64,
-                        color=ft.Colors.ON_SURFACE_VARIANT,
-                    ),
-                    ft.Text(
-                        "Постройте график, чтобы увидеть распределение зарплат",
-                        color=ft.Colors.ON_SURFACE_VARIANT,
-                    ),
-                ],
-            ),
+        self.salary_stats_row = ft.Row(spacing=12, wrap=True)
+        self.salary_chart_col = ft.Column(spacing=6, scroll=ft.ScrollMode.AUTO, expand=True)
+        self.salary_chart_placeholder = ft.Text(
+            "Нажмите «Обновить» чтобы построить график",
+            italic=True, color=ft.Colors.ON_SURFACE_VARIANT
         )
         self.btn_draw = primary_btn(
             "Построить график зарплат",
@@ -114,12 +97,9 @@ class AnalyticsTabView:
                             self.btn_draw,
                         ]
                     ),
-                    ft.Container(
-                        expand=True,
-                        content=ft.Stack(
-                            expand=True, controls=[self.placeholder, self.chart_image]
-                        ),
-                    ),
+                    self.salary_chart_placeholder,
+                    self.salary_stats_row,
+                    self.salary_chart_col,
                 ],
             ),
             expand=True,

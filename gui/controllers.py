@@ -613,11 +613,8 @@ class MainController:
             pass
 
     def _init_salary_field(self):
-        """Восстанавливает ожидаемую з/п из настроек; при отсутствии — пробует извлечь из резюме."""
+        """Восстанавливает вручную сохранённую з/п из настроек. Автозаполнение из резюме — только при загрузке резюме."""
         exp = int(self.config.get("salary_expectation") or 0)
-        if not exp:
-            self._try_autofill_salary()
-            exp = int(self.config.get("salary_expectation") or 0)
         self.view.scout_tab.salary_exp_field.value = str(exp) if exp else ""
 
     def handle_salary_expectation_change(self, e):
@@ -811,20 +808,78 @@ class MainController:
 
     # ── Аналитика (график зарплат) ────────────────────────────────────
     def draw_analytics_chart(self, e):
-        salaries = [v["salary_min"] for v in self.repo.get_vacancies_filtered("all") if v.get("salary_min")]
-        if not salaries:
+        import statistics
+        vacancies = self.repo.get_vacancies_filtered("all")
+        mins = [v["salary_min"] for v in vacancies if v.get("salary_min")]
+        maxs = [v["salary_max"] for v in vacancies if v.get("salary_max")]
+
+        tab = self.view.analytics_tab
+
+        if not mins and not maxs:
             self._show_info("Нет данных", "В базе нет вакансий с указанными зарплатами.")
             return
-        fig = Figure()
-        ax = fig.add_subplot(111)
-        ax.hist(salaries, bins=20, color="skyblue", edgecolor="black")
-        ax.set_title("Распределение зарплат")
-        ax.set_xlabel("Зарплата, ₽")
-        ax.set_ylabel("Количество вакансий")
-        path = str(user_path("data/chart.png"))
-        fig.savefig(path)
-        self.view.analytics_tab.chart_image.src = path
-        self.view.analytics_tab.chart_image.visible = True
+
+        all_s = mins + maxs
+
+        # Stats chips
+        def stat_chip(label, value, color):
+            return ft.Container(
+                content=ft.Column([
+                    ft.Text(label, size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(f"{value:,} ₽".replace(",", " "), size=16, weight=ft.FontWeight.BOLD, color=color),
+                ], spacing=2, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                bgcolor=ft.Colors.with_opacity(0.1, color),
+                border_radius=10,
+                padding=ft.Padding(16, 10, 16, 10),
+            )
+
+        tab.salary_stats_row.controls = [
+            stat_chip("Минимум", min(mins) if mins else 0, ft.Colors.BLUE_300),
+            stat_chip("Медиана", int(statistics.median(all_s)), ft.Colors.INDIGO_300),
+            stat_chip("Среднее", int(sum(all_s)/len(all_s)), ft.Colors.PURPLE_300),
+            stat_chip("Максимум", max(maxs) if maxs else 0, ft.Colors.GREEN_300),
+            ft.Container(
+                content=ft.Column([
+                    ft.Text("Вакансий с зарплатой", size=10, color=ft.Colors.ON_SURFACE_VARIANT),
+                    ft.Text(f"{len(mins)} из {len(vacancies)}", size=16, weight=ft.FontWeight.BOLD),
+                ], spacing=2, horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                bgcolor=ft.Colors.with_opacity(0.08, ft.Colors.INDIGO_300),
+                border_radius=10,
+                padding=ft.Padding(16, 10, 16, 10),
+            ),
+        ]
+
+        # Salary buckets bar chart
+        buckets = [
+            ("< 80 000", 0, 80_000),
+            ("80 000 – 120 000", 80_000, 120_000),
+            ("120 000 – 180 000", 120_000, 180_000),
+            ("180 000 – 250 000", 180_000, 250_000),
+            ("> 250 000", 250_000, 10_000_000),
+        ]
+        bucket_colors = [
+            ft.Colors.BLUE_300, ft.Colors.INDIGO_300, ft.Colors.PURPLE_300,
+            ft.Colors.DEEP_PURPLE_300, ft.Colors.GREEN_300,
+        ]
+
+        counts = [(label, sum(1 for s in mins if lo <= s < hi)) for label, lo, hi in buckets]
+        max_count = max(c for _, c in counts) or 1
+
+        rows = []
+        for (label, count), color in zip(counts, bucket_colors):
+            bar_width_pct = count / max_count  # 0..1
+            rows.append(ft.Row([
+                ft.Container(ft.Text(label, size=12), width=180),
+                ft.Container(
+                    ft.Container(height=20, border_radius=4, bgcolor=color,
+                                 width=max(4, bar_width_pct * 250)),
+                    width=260,
+                ),
+                ft.Text(str(count), size=12, color=ft.Colors.ON_SURFACE_VARIANT, width=30),
+            ], spacing=8, vertical_alignment=ft.CrossAxisAlignment.CENTER))
+
+        tab.salary_chart_col.controls = rows
+        tab.salary_chart_placeholder.visible = False
         self.page.update()
 
     def draw_skill_heatmap(self, e):

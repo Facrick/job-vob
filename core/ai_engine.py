@@ -219,6 +219,33 @@ class LetterAnalyzer:
         )
         return content.strip()
 
+    def generate_quiz_question(self, topic_title: str, answer_content: str) -> str:
+        """Генерирует реальный вопрос для собеседования по теме учебника.
+
+        Превращает заголовок вроде «1.1 Тестирование и QA» в конкретный вопрос
+        «Объясните разницу между QA и QC. Какова роль тестировщика в каждом?»
+        """
+        system_prompt = self.prompt_repo.get_quiz_question_instruction()
+        user_prompt = (
+            f"Тема: {topic_title}\n\n"
+            f"Краткое содержание темы:\n{answer_content[:1500]}"
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        content = self._complete(
+            messages,
+            temperature=0.4,
+            json_mode=True,
+            max_tokens=150,
+            model=self.analysis_model,
+        )
+        try:
+            return json.loads(content).get("question", topic_title)
+        except (json.JSONDecodeError, AttributeError):
+            return topic_title
+
     def evaluate_quiz_answer(
         self, question: str, reference_answer: str, user_answer: str
     ) -> dict[str, str]:

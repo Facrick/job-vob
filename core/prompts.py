@@ -69,6 +69,17 @@ class PromptRepository:
         )
 
     @staticmethod
+    def get_quiz_question_instruction() -> str:
+        return (
+            "Ты — Senior QA Engineer, проводящий техническое собеседование. "
+            "Тебе дана тема из учебника и её краткое содержание. "
+            "Сформулируй ОДИН конкретный вопрос для собеседования по этой теме — "
+            "такой, какой задают на реальных интервью. "
+            "Вопрос должен проверять понимание, а не просто знание определения. "
+            "Верни СТРОГО JSON: {\"question\": \"текст вопроса\"}"
+        )
+
+    @staticmethod
     def get_quiz_evaluation_instruction() -> str:
         return (
             "ROLE & CONTEXT:\n"

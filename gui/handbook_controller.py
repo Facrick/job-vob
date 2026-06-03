@@ -6,12 +6,8 @@ import flet as ft
 from core.handbook import AI_SECTION
 from core.utils import html_to_markdown
 
+
 class HandbookController:
-    _ACTIVE_BTN_STYLE = ft.ButtonStyle(
-        bgcolor=ft.Colors.with_opacity(0.18, ft.Colors.INDIGO_300),
-        color=ft.Colors.INDIGO_300,
-    )
-    _INACTIVE_BTN_STYLE = ft.ButtonStyle(bgcolor=None, color=None)
 
     def __init__(self, main_controller):
         self.main = main_controller
@@ -19,9 +15,13 @@ class HandbookController:
 
         self._current_topic: dict | None = None
         self._hb_mode: str = "sections"
-        self._deck: list[dict] = []
-        self._cards_done: int = 0
         self._handbook_sections: dict = {}
+        self._quiz_deck: list[dict] = []
+        self._quiz_index: int = 0
+        self._quiz_score: int = 0
+        self._quiz_total: int = 0
+        self._current_quiz_question: str = ""
+        self._current_quiz_topic: dict = {}
 
     def load_handbook(self):
         try:
@@ -120,44 +120,19 @@ class HandbookController:
     def set_handbook_mode(self, mode: str):
         self._hb_mode = mode
         hb = self.main.view.handbook_tab
-        mode_btns = {
-            "sections": hb.btn_mode_sections,
-            "favorites": hb.btn_mode_fav,
-            "plan": hb.btn_mode_plan,
-            "cards": hb.btn_mode_cards,
-            "quiz": hb.btn_mode_quiz,
-        }
-        for m, btn in mode_btns.items():
-            btn.style = (
-                self._ACTIVE_BTN_STYLE if m == mode else self._INACTIVE_BTN_STYLE
-            )
-            
-        is_cards = mode == "cards"
+        hb.set_active_mode(mode)
+        hb.mode_bar.update()
+
         is_quiz = mode == "quiz"
-        
-        hb.search_field.visible = not is_cards
-        hb.tree_handbook.visible = not is_cards
-        hb.cards_controls.visible = is_cards
-        
-        hb.topic_pane.visible = not is_cards and not is_quiz
-        hb.card_box.visible = is_cards
+
+        hb.tree_handbook.visible = not is_quiz
+        hb.search_field.visible = not is_quiz
+        hb.topic_pane.visible = not is_quiz
         hb.quiz_box.visible = is_quiz
-        
-        if is_cards:
-            self._deck = []
-            hb.card_progress.value = ""
-            hb.card_question.value = "Выберите область и нажмите «Начать»."
-            hb.btn_reveal.visible = False
-            hb.card_answer_box.visible = False
-            hb.card_actions.visible = False
-            self._render_progress()
-            self.main.page.update()
-        elif is_quiz:
-            if not self._current_topic:
-                hb.quiz_question.value = "Выберите тему из списка слева для прохождения квиза."
-                hb.quiz_input_box.visible = False
-            else:
-                self._show_quiz_for_topic(self._current_topic)
+
+        if is_quiz:
+            # Reset answer input when entering quiz
+            hb.quiz_answer_input.read_only = False
             self.main.page.update()
         else:
             self._render_handbook(hb.search_field.value)
@@ -166,26 +141,42 @@ class HandbookController:
         self._render_handbook(e.control.value)
 
     def _compute_learning_plan(self) -> list[tuple[str, int]]:
-        resume = self.main._safe_resume_text().lower()
+        resume_raw = self.main._safe_resume_text().lower()
+        # Split resume into words for more accurate matching
+        import re
+        resume_words = set(re.findall(r"[a-zа-яё0-9+#./]{2,}", resume_raw))
+
         counts: dict[str, int] = {}
         for v in self.main.repo.get_vacancies_filtered("all"):
             for raw in (v.get("skills") or "").split(","):
                 skill = raw.strip()
                 low = skill.lower()
-                if not skill or low in ("не указаны", "не указано") or low in resume:
+                if not skill or low in ("не указаны", "не указано", "—", "-"):
+                    continue
+                # Check if skill words are ALL in resume (word-level match)
+                skill_words = set(re.findall(r"[a-zа-яё0-9+#./]{2,}", low))
+                if skill_words and skill_words.issubset(resume_words):
                     continue
                 counts[skill] = counts.get(skill, 0) + 1
-        return sorted(counts.items(), key=lambda kv: -kv[1])[:25]
+        return sorted(counts.items(), key=lambda kv: -kv[1])[:30]
 
     def _render_learning_plan(self, tree):
         plan = self._compute_learning_plan()
         if not plan:
+            has_vacancies = bool(self.main.repo.get_vacancies_filtered("all"))
+            if not has_vacancies:
+                hint = "Соберите вакансии через CRM — план составится из навыков, которые работодатели требуют чаще всего."
+            else:
+                hint = "Все навыки из ваших вакансий уже присутствуют в резюме — план пуст. Соберите новые вакансии."
             tree.controls.append(
-                ft.Text(
-                    "План пуст: соберите вакансии (CRM) и загрузите резюме — "
-                    "сюда попадут требуемые навыки, которых нет в резюме.",
-                    italic=True,
-                    color=ft.Colors.ON_SURFACE_VARIANT,
+                ft.Container(
+                    content=ft.Column(spacing=8, controls=[
+                        ft.Icon(ft.Icons.CHECKLIST, size=36, color=ft.Colors.ON_SURFACE_VARIANT),
+                        ft.Text("📋 План обучения", weight=ft.FontWeight.BOLD, size=14),
+                        ft.Text(hint, italic=True, color=ft.Colors.ON_SURFACE_VARIANT, size=13),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER),
+                    padding=ft.Padding(20, 30, 20, 30),
+                    alignment=ft.Alignment(0, 0),
                 )
             )
             return
@@ -266,10 +257,6 @@ class HandbookController:
             "answer": answer,
             "source": source,
         }
-        
-        if self._hb_mode == "quiz":
-            self._show_quiz_for_topic(self._current_topic)
-            return
 
         hb.topic_title.value = question
         hb.topic_badge.value = {
@@ -291,16 +278,84 @@ class HandbookController:
         )
         hb.btn_studied.tooltip = "Снять отметку" if is_studied else "Отметить изученным"
         self._exit_edit_mode()
-        
-    def _show_quiz_for_topic(self, topic: dict):
+
+    def handle_quiz_start(self, e):
         hb = self.main.view.handbook_tab
-        hb.quiz_question.value = topic.get("question", "")
-        hb.quiz_input.value = ""
-        hb.quiz_result.controls.clear()
-        hb.quiz_input_box.visible = True
-        hb.quiz_btn_check.disabled = False
-        hb.quiz_progress.visible = False
+        scope = hb.quiz_scope.value
+
+        deck = []
+        for section, items in self.handbook.get_all_sections().items():
+            for it in items:
+                q = it["question"]
+                if scope == "favorites" and not self.handbook.is_favorite(q):
+                    continue
+                deck.append({"section": section, "question": q, "answer": it["answer"], "source": it.get("source", "")})
+
+        random.shuffle(deck)
+        deck = deck[:20]  # max 20 questions per session
+
+        if not deck:
+            self.main._show_error("Нет вопросов для выбранной области.")
+            return
+
+        self._quiz_deck = deck
+        self._quiz_index = 0
+        self._quiz_score = 0
+        self._quiz_total = len(deck)
+        self._show_quiz_question()
+
+    def _show_quiz_question(self):
+        hb = self.main.view.handbook_tab
+        if self._quiz_index >= self._quiz_total:
+            # Session done
+            pct = round(self._quiz_score / self._quiz_total * 100) if self._quiz_total else 0
+            hb.quiz_question_text.value = f"🎉 Квиз завершён! Результат: {self._quiz_score}/{self._quiz_total} ({pct}%)"
+            hb.quiz_answer_input.visible = False
+            hb.btn_quiz_check.visible = False
+            hb.btn_quiz_next.visible = False
+            hb.quiz_eval_chip.visible = False
+            hb.quiz_feedback_text.visible = False
+            hb.quiz_correct_label.visible = False
+            hb.quiz_correct_answer.visible = False
+            hb.quiz_progress_label.value = "Сессия завершена"
+            self.main.page.update()
+            return
+
+        topic = self._quiz_deck[self._quiz_index]
+        hb.quiz_progress_label.value = f"Вопрос {self._quiz_index + 1} из {self._quiz_total}"
+        hb.quiz_question_text.value = "⏳ ИИ формулирует вопрос..."
+        hb.quiz_answer_input.value = ""
+        hb.quiz_answer_input.visible = False
+        hb.btn_quiz_check.visible = False
+        hb.btn_quiz_next.visible = False
+        hb.quiz_eval_chip.visible = False
+        hb.quiz_feedback_text.visible = False
+        hb.quiz_correct_label.visible = False
+        hb.quiz_correct_answer.visible = False
+        hb.quiz_spinner.visible = True
         self.main.page.update()
+
+        def job():
+            try:
+                question = self.main.analyzer.generate_quiz_question(
+                    topic["question"], topic["answer"]
+                )
+            except Exception:
+                question = topic["question"]
+            hb.quiz_question_text.value = question
+            # store generated question for evaluation
+            self._current_quiz_question = question
+            self._current_quiz_topic = topic
+            hb.quiz_answer_input.visible = True
+            hb.btn_quiz_check.visible = True
+            hb.quiz_spinner.visible = False
+            self.main.page.update()
+
+        self.main._run_bg(job)
+
+    def handle_quiz_next(self, e):
+        self._quiz_index += 1
+        self._show_quiz_question()
 
     def _enter_edit_mode(self):
         hb = self.main.view.handbook_tab
@@ -404,212 +459,71 @@ class HandbookController:
         self._show_topic(section, question, answer, source)
         self.main.view.switch_to_tab(self.main.TAB_HANDBOOK)
 
-    def handle_cards_start(self, e):
-        hb = self.main.view.handbook_tab
-        scope = hb.cards_scope.value
-        deck: list[dict] = []
-        for section, items in self.handbook.get_all_sections().items():
-            for it in items:
-                q = it["question"]
-                if scope == "favorites" and not self.handbook.is_favorite(q):
-                    continue
-                if scope == "unstudied" and self.handbook.is_studied(q):
-                    continue
-                deck.append(
-                    {
-                        "section": section,
-                        "question": q,
-                        "answer": it["answer"],
-                        "source": it.get("source", ""),
-                    }
-                )
-        random.shuffle(deck)
-        self._deck = deck
-        self._cards_done = 0
-        if not deck:
-            hb.card_progress.value = ""
-            hb.card_question.value = "Нет карточек для выбранной области."
-            hb.btn_reveal.visible = False
-            hb.card_answer_box.visible = False
-            hb.card_actions.visible = False
-            self.main.page.update()
-            return
-        self._show_card()
-
-    def _show_card(self):
-        hb = self.main.view.handbook_tab
-        if not self._deck:
-            hb.card_progress.value = f"Готово! Отмечено изученными: {self._cards_done}."
-            hb.card_question.value = "🎉 Все карточки пройдены."
-            hb.btn_reveal.visible = False
-            hb.card_answer_box.visible = False
-            hb.card_actions.visible = False
-            self._render_progress()
-            self.main.page.update()
-            return
-        hb.card_progress.value = (
-            f"Знаю: {self._cards_done}   ·   Осталось: {len(self._deck)}"
-        )
-        hb.card_question.value = self._deck[0]["question"]
-        hb.btn_reveal.visible = True
-        hb.card_answer_box.visible = False
-        hb.card_actions.visible = False
-        self.main.page.update()
-
-    def handle_cards_reveal(self, e):
-        if not self._deck:
-            return
-        card = self._deck[0]
-        hb = self.main.view.handbook_tab
-        hb.card_answer.value = (
-            card["answer"]
-            if self._is_overlay(card["source"])
-            else html_to_markdown(card["answer"])
-        )
-        hb.btn_reveal.visible = False
-        hb.card_answer_box.visible = True
-        hb.card_actions.visible = True
-        self.main.page.update()
-
-    def handle_cards_know(self, e):
-        if not self._deck:
-            return
-        card = self._deck.pop(0)
-        if not self.handbook.is_studied(card["question"]):
-            self.handbook.toggle_studied(card["question"])
-        self._cards_done += 1
-        self._show_card()
-
-    def handle_cards_repeat(self, e):
-        if not self._deck:
-            return
-        self._deck.append(self._deck.pop(0))
-        self._show_card()
-
     def handle_quiz_check(self, e):
-        if not self._current_topic:
-            return
-            
         hb = self.main.view.handbook_tab
-        user_answer = hb.quiz_input.value
-        
-        if not user_answer or not user_answer.strip():
-            self.main._show_error("Пожалуйста, введите ваш ответ.")
+        user_answer = (hb.quiz_answer_input.value or "").strip()
+        if not user_answer:
+            self.main._show_error("Введите ваш ответ перед проверкой.")
             return
 
-        hb.quiz_btn_check.disabled = True
-        hb.quiz_progress.visible = True
-        hb.quiz_result.controls.clear()
+        hb.btn_quiz_check.disabled = True
+        hb.quiz_spinner.visible = True
+        hb.quiz_eval_chip.visible = False
+        hb.quiz_feedback_text.visible = False
         self.main.page.update()
 
-        question = self._current_topic.get("question", "")
-        reference_answer = self._current_topic.get("answer", "")
-        
+        question = getattr(self, "_current_quiz_question", self._current_quiz_topic.get("question", ""))
+        topic = getattr(self, "_current_quiz_topic", self._quiz_deck[self._quiz_index] if self._quiz_deck else {})
+        reference = topic.get("answer", "")
+
         def job():
+            result = {"evaluation": "Error", "feedback": "Ошибка при проверке."}
             try:
                 result = self.main.analyzer.evaluate_quiz_answer(
-                    question=question,
-                    reference_answer=reference_answer,
-                    user_answer=user_answer
+                    question=question, reference_answer=reference, user_answer=user_answer
                 )
             except Exception as ex:
-                logging.error(f"Ошибка при оценке ответа: {ex}")
-                result = {"evaluation": "Error", "feedback": f"Произошла ошибка: {ex}"}
-            
-            self._render_quiz_result(result)
-        
+                result = {"evaluation": "Error", "feedback": str(ex)}
+
+            evaluation = result.get("evaluation", "Error")
+            feedback = result.get("feedback", "")
+
+            color_map = {
+                "Correct": ft.Colors.GREEN_600,
+                "Partially Correct": ft.Colors.ORANGE_600,
+                "Incorrect": ft.Colors.RED_600,
+                "Error": ft.Colors.RED_600,
+            }
+            label_map = {
+                "Correct": "✅ Верно",
+                "Partially Correct": "⚠️ Частично верно",
+                "Incorrect": "❌ Неверно",
+                "Error": "⚠️ Ошибка",
+            }
+
+            if evaluation == "Correct":
+                self._quiz_score += 1
+
+            hb.quiz_eval_chip.label = ft.Text(label_map.get(evaluation, evaluation), weight=ft.FontWeight.BOLD)
+            hb.quiz_eval_chip.bgcolor = ft.Colors.with_opacity(0.2, color_map.get(evaluation, ft.Colors.GREY))
+            hb.quiz_eval_chip.visible = True
+
+            hb.quiz_feedback_text.value = feedback
+            hb.quiz_feedback_text.visible = True
+
+            # Show correct answer from handbook
+            answer_md = reference if topic.get("source") in ("ai", "user") else html_to_markdown(reference)
+            hb.quiz_correct_answer.value = answer_md
+            hb.quiz_correct_label.visible = True
+            hb.quiz_correct_answer.visible = True
+
+            hb.quiz_answer_input.read_only = True
+            hb.btn_quiz_check.visible = False
+            hb.btn_quiz_next.visible = True
+            hb.quiz_spinner.visible = False
+            hb.btn_quiz_check.disabled = False
+
+            hb.quiz_progress_label.value = f"Вопрос {self._quiz_index + 1} из {self._quiz_total}  •  Очков: {self._quiz_score}"
+            self.main.page.update()
+
         self.main._run_bg(job)
-        
-    def _render_quiz_result(self, result: dict):
-        hb = self.main.view.handbook_tab
-        hb.quiz_btn_check.disabled = False
-        hb.quiz_progress.visible = False
-
-        evaluation = result.get("evaluation", "Error")
-        feedback = result.get("feedback", "Произошла ошибка.")
-        color_map = {
-            "Correct": ft.Colors.GREEN_600,
-            "Partially Correct": ft.Colors.ORANGE_600,
-            "Incorrect": ft.Colors.RED_600,
-            "Error": ft.Colors.RED_600,
-        }
-        icon_map = {
-            "Correct": ft.Icons.CHECK_CIRCLE,
-            "Partially Correct": ft.Icons.INFO,
-            "Incorrect": ft.Icons.CANCEL,
-            "Error": ft.Icons.ERROR,
-        }
-
-        hb.quiz_result.controls = [
-            ft.Chip(
-                label=ft.Text(evaluation, weight=ft.FontWeight.BOLD),
-                bgcolor=color_map.get(evaluation),
-                leading=ft.Icon(icon_map.get(evaluation)),
-            ),
-            ft.Container(
-                ft.Column(
-                    [
-                        ft.Text("Комментарий ИИ:", weight=ft.FontWeight.BOLD),
-                        ft.Markdown(
-                            feedback,
-                            extension_set="gitweball",
-                            code_theme="atom-one-dark",
-                        ),
-                    ]
-                ),
-                padding=15,
-                shape=ft.RoundedRectangleBorder(radius=8),
-                border=ft.border.Border.all(1, ft.Colors.OUTLINE_VARIANT),
-            ),
-            ft.ExpansionPanelList(
-                controls=[
-                    ft.ExpansionPanel(
-                        header=ft.ListTile(title=ft.Text("Показать эталонный ответ")),
-                        content=ft.Container(
-                            ft.Markdown(
-                                html_to_markdown(self._current_topic.get("answer", "")),
-                                extension_set="gitweball",
-                                code_theme="atom-one-dark",
-                            ),
-                            padding=15,
-                        ),
-                    )
-                ]
-            ),
-            ft.Divider(),
-            ft.Row(
-                [
-                    ft.Text("Отметить тему как изученную?"),
-                    ft.IconButton(
-                        icon=ft.Icons.CHECK_CIRCLE,
-                        icon_color=ft.Colors.GREEN,
-                        tooltip="Знаю",
-                        on_click=lambda e: self._quiz_toggle_studied_status(True),
-                    ),
-                    ft.IconButton(
-                        icon=ft.Icons.REFRESH,
-                        icon_color=ft.Colors.ORANGE,
-                        tooltip="Повторить",
-                        on_click=lambda e: self._quiz_toggle_studied_status(False),
-                    ),
-                ],
-                alignment=ft.MainAxisAlignment.END,
-            ),
-        ]
-        self.main.page.update()
-
-    def _quiz_toggle_studied_status(self, studied: bool):
-        if not self._current_topic:
-            return
-            
-        question = self._current_topic.get("question")
-        is_currently_studied = self.handbook.is_studied(question)
-        if is_currently_studied != studied:
-            self.handbook.toggle_studied(question)
-            
-        self.main._show_info(
-            "Статус обновлён", 
-            f"Тема отмечена как {'изученная' if studied else 'требующая повторения'}."
-        )
-        self._render_handbook(self.main.view.handbook_tab.search_field.value)
-        self.main.page.update()
