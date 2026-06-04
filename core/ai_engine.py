@@ -326,6 +326,67 @@ class LetterAnalyzer:
             logging.error(f"[AI Exercise] Ошибка генерации: {e}. Ответ: {content}")
             return {}
 
+    def validate_exercise(
+        self, task: str, topic_title: str, persona: str = ""
+    ) -> dict:
+        """Role A: контролёр проверяет КОРРЕКТНОСТЬ задания (не решает его).
+
+        Возвращает {valid: bool, reason: str, fixed_task: str}. При сетевой
+        ошибке возвращает valid=True (не блокируем выдачу из-за сбоя контролёра).
+        """
+        system_prompt = self.prompt_repo.get_exercise_validation_instruction()
+        if persona:
+            system_prompt += f"\nНаправление: {persona}."
+        user_prompt = f"Тема: {topic_title}\n\nЧЕРНОВИК ЗАДАНИЯ:\n{task[:2000]}"
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        try:
+            content = self._complete(
+                messages, temperature=0.0, json_mode=True,
+                max_tokens=400, model=self.analysis_model,
+            )
+            data = json.loads(content)
+            return {
+                "valid": bool(data.get("valid", True)),
+                "reason": data.get("reason", ""),
+                "fixed_task": (data.get("fixed_task") or "").strip(),
+            }
+        except Exception as e:  # noqa: BLE001
+            logging.warning(f"[AI Exercise] Контролёр недоступен, пропускаю: {e}")
+            return {"valid": True, "reason": "", "fixed_task": ""}
+
+    def generate_validated_exercise(
+        self, topic_title: str, answer_content: str, persona: str = "",
+        max_attempts: int = 2,
+    ) -> dict:
+        """Генерирует задание и прогоняет его через контролёра (Role A).
+
+        Делает до max_attempts попыток. Если контролёр предложил починку
+        (fixed_task) — применяет её и принимает задание. Возвращает первое
+        валидное задание; если валидного нет — последнее сгенерированное
+        (чтобы пользователь всё равно получил задачу). Один io_bound-вызов.
+        """
+        last: dict = {}
+        for attempt in range(max(1, max_attempts)):
+            ex = self.generate_exercise(topic_title, answer_content, persona)
+            if not ex or not ex.get("task"):
+                continue
+            last = ex
+            verdict = self.validate_exercise(ex["task"], topic_title, persona)
+            if verdict.get("valid"):
+                return ex
+            fixed = verdict.get("fixed_task")
+            if fixed:
+                ex = {**ex, "task": fixed}
+                return ex
+            logging.info(
+                f"[AI Exercise] Контролёр отклонил задание "
+                f"(попытка {attempt + 1}): {verdict.get('reason')}"
+            )
+        return last
+
     def grade_exercise(
         self, task: str, reference: str, rubric: str, user_answer: str
     ) -> dict:

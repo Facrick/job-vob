@@ -15,7 +15,7 @@ from gui_ng.theme import apply_theme
 
 # Видимый маркер сборки — бампается при каждой правке, чтобы было видно,
 # что запущена свежая версия (а не старый процесс при reload=False).
-BUILD_TAG = "build 21 · migration-done"
+BUILD_TAG = "build 22 · exercises-validator"
 
 _TABS = [
     ("scout", "CRM", "search", views.build_scout_tab),

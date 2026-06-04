@@ -475,6 +475,8 @@ def build_handbook_tab(c):
                                 "text-base font-bold truncate"
                             )
                             ui.space()
+                            el["ex_progress"] = ui.badge("").classes("text-xs")
+                            el["ex_progress"].set_visibility(False)
                             el["ex_spinner"] = ui.spinner(size="sm")
                             el["ex_spinner"].set_visibility(False)
                             el["ex_btn_new"] = ui.button(

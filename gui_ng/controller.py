@@ -1318,6 +1318,33 @@ class AppController:
         self.el["ex_result"].set_visibility(False)
         self.el["ex_btn_new"].set_visibility(False)
         self.el["ex_spinner"].set_visibility(False)
+        self._show_overall_progress()
+
+    def _show_overall_progress(self):
+        """Сводный бейдж: сколько тем зачтено / опробовано."""
+        passed, attempted = self.exercises.stats()
+        badge = self.el["ex_progress"]
+        if attempted:
+            badge.set_text(f"✓ Зачтено: {passed} из {attempted}")
+            badge.style("background-color:#5c6bc033;color:#9aa0b4")
+            badge.set_visibility(True)
+        else:
+            badge.set_visibility(False)
+
+    def _show_topic_progress(self, question: str):
+        """Бейдж по конкретной теме: лучший результат и число попыток."""
+        prog = self.exercises.get_progress(question)
+        badge = self.el["ex_progress"]
+        if not prog:
+            self._show_overall_progress()
+            return
+        best = prog.get("best_score", 0)
+        attempts = prog.get("attempts", 0)
+        color = "#66bb6a" if prog.get("passed") else "#ff8f00"
+        mark = "✓ " if prog.get("passed") else ""
+        badge.set_text(f"{mark}Лучший: {best}/100 · попыток: {attempts}")
+        badge.style(f"background-color:{color}33;color:{color};font-weight:600")
+        badge.set_visibility(True)
 
     def load_exercise(self, topic: dict):
         """Открывает задание по теме: берёт из банка или генерирует новое."""
@@ -1327,6 +1354,7 @@ class AppController:
         self.el["ex_empty"].set_visibility(False)
         self.el["ex_btn_new"].set_visibility(True)
         self.el["ex_result"].set_visibility(False)
+        self._show_topic_progress(question)
         bank = self.exercises.get_for_topic(question)
         if bank:
             self._current_exercise = {**bank[-1], "question": question, "answer": answer}
@@ -1362,7 +1390,8 @@ class AppController:
         self.el["ex_spinner"].set_visibility(True)
         try:
             ex = await run.io_bound(
-                self.analyzer.generate_exercise, question, answer, self.handbook.persona
+                self.analyzer.generate_validated_exercise,
+                question, answer, self.handbook.persona,
             )
         except Exception as ex_err:  # noqa: BLE001
             self._show_error(str(ex_err))
@@ -1424,6 +1453,11 @@ class AppController:
             parts.append(f"**💡 Рекомендация:** {advice}")
         self.el["ex_feedback"].set_content("\n\n".join(parts) or "_Нет деталей._")
         self.el["ex_result"].set_visibility(True)
+        # Фиксируем прогресс по теме и обновляем бейдж.
+        question = (self._current_exercise or {}).get("question", "")
+        if question:
+            self.exercises.record_result(question, score, verdict)
+            self._show_topic_progress(question)
         # После проверки эталон/критерии остаются скрытыми — показываем только разбор.
 
 
