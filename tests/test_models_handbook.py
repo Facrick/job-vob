@@ -10,7 +10,7 @@ def test_vacancy_status_is_str():
 
 
 def test_handbook_loads():
-    sections = QAHandbook().get_all_sections()
+    sections = QAHandbook(track="qa").get_all_sections()
     assert len(sections) >= 13
     # новые разделы присутствуют
     keys = " ".join(sections.keys())
@@ -18,7 +18,7 @@ def test_handbook_loads():
 
 
 def test_handbook_has_transferred_topics():
-    sections = QAHandbook().get_all_sections()
+    sections = QAHandbook(track="qa").get_all_sections()
     questions = [it["question"] for items in sections.values() for it in items]
     blob = " | ".join(questions)
     for tag in ("6.4", "6.6", "6.7", "7.2", "7.4", "12.1", "12.7"):
@@ -26,7 +26,7 @@ def test_handbook_has_transferred_topics():
 
 
 def test_find_topic_maps_gaps_correctly():
-    hb = QAHandbook()
+    hb = QAHandbook(track="qa")
     # совпадение по слову в вопросе, а не по названию раздела
     assert hb.find_topic("Docker")[1].startswith("4.3")
     assert hb.find_topic("SOLID")[1].startswith("7.4")
@@ -38,14 +38,14 @@ def test_find_topic_maps_gaps_correctly():
 
 
 def test_find_topic_unknown_returns_none():
-    hb = QAHandbook()
+    hb = QAHandbook(track="qa")
     assert hb.find_topic("блокчейн криптовалюта") is None
     assert hb.find_topic("") is None
 
 
 def test_find_topic_synonyms_and_forms():
     """Синонимы и словоформы должны находить тему (рекалл)."""
-    hb = QAHandbook()
+    hb = QAHandbook(track="qa")
     # зонтичный синоним «автотестирование» → раздел автоматизации
     assert hb.find_topic("Автотестирование")[1].startswith("5")
     assert hb.find_topic("AQA")[1].startswith("5")
@@ -56,7 +56,7 @@ def test_find_topic_synonyms_and_forms():
 
 def test_find_topic_generic_phrases_return_none():
     """Чисто общие фразы (без QA-термина) не должны цеплять тему."""
-    hb = QAHandbook()
+    hb = QAHandbook(track="qa")
     assert hb.find_topic("опыт работы") is None
     assert hb.find_topic("углубить знания") is None
     assert hb.find_topic("коммуникабельность") is None
@@ -122,7 +122,7 @@ def test_studied_progress_and_coexist(tmp_path):
 
 
 def test_handbook_answers_nonempty():
-    sections = QAHandbook().get_all_sections()
+    sections = QAHandbook(track="qa").get_all_sections()
     for items in sections.values():
         for it in items:
             assert it.get("question"), "пустой вопрос"

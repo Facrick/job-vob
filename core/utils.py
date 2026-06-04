@@ -116,6 +116,22 @@ def html_to_markdown(html: str) -> str:
     return parser.result()
 
 
+_MD_INLINE_HEADING = re.compile(r"(?<=[ \t.,:;!?)\]\"'»])(#{1,6}[ \t]+)")
+
+
+def normalize_markdown(text: str) -> str:
+    """Чинит markdown, который ИИ иногда склеивает в одну строку.
+
+    Главная проблема — заголовки `### ...` не с начала строки: парсер markdown
+    показывает их как обычный текст с символами решёток. Переносим такой
+    заголовок на новую строку (с пустой строкой перед ним), не задевая `C#`/`F#`
+    (там после решётки нет пробела) и заголовки, уже стоящие в начале строки.
+    """
+    if not text or "#" not in text:
+        return text or ""
+    return _MD_INLINE_HEADING.sub(r"\n\n\1", text)
+
+
 def strip_html(html: str) -> str:
     """Грубо конвертирует HTML в читаемый плоский текст.
 

@@ -293,3 +293,72 @@ class LetterAnalyzer:
                 "evaluation": "Error",
                 "feedback": "Произошла ошибка при анализе ответа. Попробуйте снова.",
             }
+
+    def generate_exercise(
+        self, topic_title: str, answer_content: str, persona: str = ""
+    ) -> dict:
+        """Генерирует практическое задание по теме: {task, reference, rubric}."""
+        system_prompt = self.prompt_repo.get_exercise_generation_instruction()
+        if persona:
+            system_prompt += f"\nНаправление: {persona}."
+        user_prompt = (
+            f"Тема: {topic_title}\n\n"
+            f"Содержание темы:\n{answer_content[:2000]}"
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        content = self._complete(
+            messages, temperature=0.6, json_mode=True,
+            max_tokens=900, model=self.analysis_model,
+        )
+        try:
+            data = json.loads(content)
+            if not data.get("task"):
+                raise ValueError("нет ключа task")
+            return {
+                "task": data.get("task", ""),
+                "reference": data.get("reference", ""),
+                "rubric": data.get("rubric", ""),
+            }
+        except (json.JSONDecodeError, ValueError, AttributeError) as e:
+            logging.error(f"[AI Exercise] Ошибка генерации: {e}. Ответ: {content}")
+            return {}
+
+    def grade_exercise(
+        self, task: str, reference: str, rubric: str, user_answer: str
+    ) -> dict:
+        """Оценивает ответ ученика по скрытому эталону и критериям."""
+        system_prompt = self.prompt_repo.get_exercise_grading_instruction()
+        user_prompt = (
+            f"ЗАДАНИЕ:\n{task}\n\n"
+            f"ЭТАЛОННЫЙ ОТВЕТ:\n{reference[:3000]}\n\n"
+            f"КРИТЕРИИ:\n{rubric[:1500]}\n\n"
+            f"ОТВЕТ УЧЕНИКА:\n{user_answer[:3000]}"
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        content = self._complete(
+            messages, temperature=0.1, json_mode=True,
+            max_tokens=700, model=self.analysis_model,
+        )
+        try:
+            data = json.loads(content)
+            score = int(data.get("score", 0))
+            return {
+                "score": max(0, min(100, score)),
+                "verdict": data.get("verdict", ""),
+                "correct": data.get("correct", []) or [],
+                "missing": data.get("missing", []) or [],
+                "advice": data.get("advice", ""),
+            }
+        except (json.JSONDecodeError, ValueError, TypeError, AttributeError) as e:
+            logging.error(f"[AI Exercise] Ошибка оценки: {e}. Ответ: {content}")
+            return {
+                "score": 0, "verdict": "Ошибка",
+                "correct": [], "missing": [],
+                "advice": "Не удалось оценить ответ. Попробуйте снова.",
+            }

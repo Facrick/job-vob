@@ -145,6 +145,16 @@ class VacancyRepository:
             )
             conn.commit()
 
+    def count_cover_letters(self) -> int:
+        """Сколько вакансий имеют сохранённое сопроводительное письмо."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT COUNT(*) FROM cover_letters "
+                "WHERE letter_text IS NOT NULL AND TRIM(letter_text) <> ''"
+            )
+            return int(cursor.fetchone()[0])
+
     def get_cover_letter(self, vacancy_id: str) -> dict | None:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row

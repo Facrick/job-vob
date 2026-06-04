@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+import re as _re
 from collections import defaultdict
 
 _SKIP = {"не указаны", "не указано", "—", "-", ""}
@@ -74,9 +75,6 @@ def detect_grade(title: str) -> str:
         if any(p in t for p in patterns):
             return grade
     return "Middle"
-
-
-import re as _re
 
 
 def _skills_from_description(text: str) -> list[str]:

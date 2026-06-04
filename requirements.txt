@@ -1,5 +1,6 @@
-# UI (Flet 0.85 — API заметно отличается от 0.7x, версия зафиксирована)
-flet>=0.85,<0.86
+# UI (NiceGUI — нативное окно через pywebview)
+nicegui>=3.0
+pywebview>=5.0
 
 # Парсинг hh.ru
 playwright>=1.42.0

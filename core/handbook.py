@@ -335,17 +335,34 @@ class QAHandbook:
         tokens = _significant_tokens(term)
         if not tokens:
             return None
+        term_low = (term or "").strip().lower()
 
-        best, best_score = None, 0
+        best, best_key = None, None
         for section, items in self.sections.items():
             for it in items:
-                q_tokens = _tokenize(it.get("question", ""))
-                score = sum(
-                    1 for t in tokens
-                    if any(_fuzzy_match(t, qt) for qt in q_tokens)
+                q = it.get("question", "")
+                q_tokens = _tokenize(q)
+                matched = sum(
+                    1 for t in tokens if any(_fuzzy_match(t, qt) for qt in q_tokens)
                 )
-                if score > best_score:
-                    best_score = score
-                    best = (section, it.get("question", ""), it.get("answer", ""),
-                            it.get("source", ""))
-        return best if best_score >= 1 else None
+                if matched == 0:
+                    continue
+                coverage = matched / len(tokens)
+                # Точное вхождение всей искомой фразы в вопрос — сильнейший сигнал
+                # (например, «Stream API» целиком есть в заголовке темы).
+                exact_phrase = bool(term_low) and term_low in q.lower()
+                # Сортировочный ключ: точная фраза → покрытие → число совпадений.
+                # При полном равенстве остаётся первый встреченный (порядок разделов).
+                key = (exact_phrase, coverage, matched)
+                if best_key is None or key > best_key:
+                    best_key = key
+                    best = (section, q, it.get("answer", ""), it.get("source", ""))
+
+        if best is None:
+            return None
+        exact_phrase, coverage, matched = best_key
+        # Отсекаем слабые совпадения: одиночное общее слово на длинной фразе
+        # (низкое покрытие, без точного вхождения) — это «не туда».
+        if exact_phrase or coverage >= 0.5 or matched >= 2:
+            return best
+        return None
