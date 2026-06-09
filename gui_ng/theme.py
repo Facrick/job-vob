@@ -1,161 +1,385 @@
-"""theme.py — палитра и общие UI-хелперы для NiceGUI-версии интерфейса.
+"""theme.py — дизайн-система приложения (shadcn/Vercel-стиль).
 
-Тёмная тема с индиго-акцентом (как во Flet-версии), но рендер через Quasar/Vue,
-поэтому выглядит современнее «из коробки».
+Тёмная тема на базе zinc-950, glassmorphism-карточки, шрифт Inter,
+один фиолетовый акцент. Минимум декора — максимум читаемости.
 """
 
 from nicegui import ui
 
-# ── Палитра (hex для Quasar) ───────────────────────────────────
-PRIMARY = "#5C6BC0"   # indigo-400
-SURFACE = "#1e1f26"   # фон карточек
-BG = "#16171c"        # фон страницы
-MUTED = "#9aa0b4"     # вторичный текст
+# ── Дизайн-токены ───────────────────────────────────────────────
+PRIMARY   = "#a78bfa"   # violet-400  — единственный акцент
+SURFACE   = "#18181b"   # zinc-900    — фон карточек
+BG        = "#09090b"   # zinc-950    — фон страницы
+BORDER    = "#27272a"   # zinc-800    — границы
+MUTED     = "#71717a"   # zinc-500    — вторичный текст
+TEXT      = "#fafafa"   # zinc-50     — основной текст
 
-# Цвета статусов воронки → (подпись, hex).
+# Статусы воронки → (подпись, hex)
 STATUS_STYLE: dict[str, tuple[str, str]] = {
-    "discovered": ("Новая", "#42a5f5"),
-    "processed": ("Письмо", "#5c6bc0"),
-    "applied": ("Отклик", "#ff8f00"),
-    "interview": ("Интервью", "#ab47bc"),
-    "offer": ("Оффер", "#66bb6a"),
-    "rejected": ("Отказ", "#ef5350"),
+    "discovered": ("Новая",    "#60a5fa"),   # blue-400
+    "processed":  ("Письмо",   "#a78bfa"),   # violet-400
+    "applied":    ("Отклик",   "#fb923c"),   # orange-400
+    "interview":  ("Интервью", "#c084fc"),   # purple-400
+    "offer":      ("Оффер",    "#4ade80"),   # green-400
+    "rejected":   ("Отказ",    "#f87171"),   # red-400
 }
 
-GRADE_HEX = {"Junior": "#64b5f6", "Middle": "#5c6bc0", "Senior/Lead": "#ab47bc"}
+GRADE_HEX = {
+    "Junior":      "#60a5fa",
+    "Middle":      "#a78bfa",
+    "Senior/Lead": "#c084fc",
+}
 
 
 def apply_theme() -> None:
-    """Включает тёмный режим и задаёт фирменные цвета Quasar."""
+    """Применяет shadcn/Vercel тёмную тему к Quasar."""
     ui.dark_mode().enable()
     ui.colors(
         primary=PRIMARY,
-        secondary="#7986cb",
-        accent="#ab47bc",
-        positive="#66bb6a",
-        negative="#ef5350",
-        warning="#ff8f00",
+        secondary="#7c3aed",
+        accent="#c084fc",
+        positive="#4ade80",
+        negative="#f87171",
+        warning="#fb923c",
         dark=SURFACE,
         dark_page=BG,
     )
-    # Глобальная подстройка: карточки, фон, тонкие скроллбары, разделитель сплиттера.
+
+    # Загрузка Inter из Google Fonts (weight 400/500/600/700)
     ui.add_head_html(
-        """
-        <style>
-          body { background-color: #16171c; }
-          .q-card { border-radius: 14px; }
-          .vob-muted { color: #9aa0b4; }
-          /* Скролл появляется только при необходимости и выглядит ненавязчиво.
-             overflow-x:hidden убирает паразитный горизонтальный скролл под панелями. */
-          .vob-scroll { overflow-y: auto; overflow-x: hidden; min-height: 0; }
-          /* Панели сплиттера сами не скроллятся — это делает .vob-scroll внутри. */
-          .q-splitter__panel { overflow: hidden; }
-          ::-webkit-scrollbar { width: 9px; height: 9px; }
-          ::-webkit-scrollbar-thumb { background: #3a3b44; border-radius: 5px; }
-          ::-webkit-scrollbar-thumb:hover { background: #4a4b56; }
-          ::-webkit-scrollbar-track { background: transparent; }
-          /* Разделитель сплиттера: невидимая зона захвата + грип строго по центру. */
-          .q-splitter__separator {
-            background: transparent !important; width: 12px !important;
-            display: flex !important; align-items: center; justify-content: center;
-          }
-          .vob-grip {
-            width: 4px; height: 40px; border-radius: 3px;
-            background: #5C6BC0; opacity: .35; transition: opacity .15s;
-          }
-          .q-splitter__separator:hover .vob-grip { opacity: .8; }
-          /* Текстовые поля, которые должны заполнять высоту панели (письма/редактор). */
-          .vob-fill, .vob-fill .q-field__control, .vob-fill .q-field__control textarea {
-            height: 100% !important;
-          }
-          .vob-fill .q-field__control textarea { resize: none; }
-          /* Пузыри чата собеседования: ИИ (слева, сланцевый) и вы (справа, индиго).
-             Цвет форсируем и на контейнере, и на вложенном контенте — иначе тёмный
-             текст Quasar остаётся нечитаемым на тёмном фоне. */
-          .q-message-text,
-          .q-message-text-content,
-          .q-message-text > div {
-            color: #ffffff !important;
-          }
-          .q-message-text {
-            background: #2f3650 !important;
-            line-height: 1.55; padding: 9px 13px; border-radius: 12px;
-          }
-          .q-message-text--sent {
-            background: #4150a0 !important;
-          }
-          /* Хвостик пузыря — в цвет фона, чтобы не было серого артефакта. */
-          .q-message-text:last-child:before { border-bottom-color: #2f3650 !important; }
-          .q-message-text--sent:last-child:before { border-bottom-color: #4150a0 !important; }
-          .q-message-name { color: #c2c8e0 !important; font-weight: 600; font-size: .8rem; }
-          .q-message-stamp { color: #9aa0b4 !important; }
-          /* Заголовки внутри материала учебника не должны «съедать» высоту. */
-          .nicegui-markdown h1 { font-size: 1.25rem; margin: .4em 0 .3em; }
-          .nicegui-markdown h2 { font-size: 1.1rem;  margin: .4em 0 .3em; }
-          .nicegui-markdown h3 { font-size: 1rem;    margin: .3em 0 .2em; }
-          /* Читаемая типографика: абзацы, списки, межстрочный интервал. */
-          .nicegui-markdown p { margin: .5em 0; line-height: 1.55; }
-          .nicegui-markdown ul, .nicegui-markdown ol { margin: .4em 0; padding-left: 1.25em; }
-          .nicegui-markdown li { margin: .15em 0; line-height: 1.5; }
-          .nicegui-markdown code { background: #ffffff14; padding: 1px 5px; border-radius: 4px; }
-          /* Сегментированный переключатель режимов учебника — без обрезки подписей. */
-          .q-btn-toggle .q-btn__content { white-space: nowrap; }
-          /* Сайдбар в свёрнутом состоянии: только иконки. */
-          .vob-rail.vob-collapsed { width: 64px !important; min-width: 64px !important; }
-          .vob-rail.vob-collapsed .vob-rail-hide { display: none !important; }
-          .vob-rail.vob-collapsed .q-tab__label { display: none !important; }
-          .vob-rail.vob-collapsed .q-tab { justify-content: center !important; }
-          /* Таблица вакансий с перетаскиваемыми границами колонок. */
-          .vob-table table { table-layout: fixed; }
-          .vob-table th, .vob-table td {
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-          }
-          .vob-col-resizer {
-            position: absolute; top: 0; right: 0; width: 6px; height: 100%;
-            cursor: col-resize; user-select: none; z-index: 2;
-          }
-          .vob-col-resizer:hover { background: #5C6BC055; }
-        </style>
-        """
+        '<link rel="preconnect" href="https://fonts.googleapis.com">'
+        '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>'
+        '<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"'
+        ' rel="stylesheet">'
     )
-    # Скрипт: вешает «ручки» на заголовки таблицы .vob-table и тянет ширину колонок.
-    ui.add_body_html(
-        """
-        <script>
-        function vobInitColResize() {
-          document.querySelectorAll('.vob-table thead tr th').forEach(function (th) {
-            if (th.querySelector('.vob-col-resizer')) return;
-            th.style.position = 'relative';
-            var handle = document.createElement('div');
-            handle.className = 'vob-col-resizer';
-            th.appendChild(handle);
-            handle.addEventListener('click', function (e) { e.stopPropagation(); });
-            handle.addEventListener('mousedown', function (e) {
-              var startX = e.pageX, startW = th.offsetWidth;
-              function onMove(ev) {
-                var w = Math.max(48, startW + (ev.pageX - startX));
-                th.style.width = w + 'px';
-              }
-              function onUp() {
-                document.removeEventListener('mousemove', onMove);
-                document.removeEventListener('mouseup', onUp);
-                document.body.style.userSelect = '';
-              }
-              document.addEventListener('mousemove', onMove);
-              document.addEventListener('mouseup', onUp);
-              document.body.style.userSelect = 'none';
-              e.preventDefault(); e.stopPropagation();
-            });
-          });
-        }
-        new MutationObserver(vobInitColResize).observe(
-          document.body, { childList: true, subtree: true }
-        );
-        document.addEventListener('DOMContentLoaded', vobInitColResize);
-        setInterval(vobInitColResize, 1500);
-        </script>
-        """
-    )
+
+    ui.add_head_html("""
+<style>
+  /* ── Базовый сброс и типографика ──────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    background-color: #09090b;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 14px;
+    color: #fafafa;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── Скроллбары ───────────────────────────────────────── */
+  ::-webkit-scrollbar              { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track        { background: transparent; }
+  ::-webkit-scrollbar-thumb        { background: #3f3f46; border-radius: 99px; }
+  ::-webkit-scrollbar-thumb:hover  { background: #52525b; }
+
+  /* ── Карточки: glassmorphism ──────────────────────────── */
+  .q-card {
+    background: rgba(24, 24, 27, 0.85) !important;
+    backdrop-filter: blur(12px) saturate(120%);
+    -webkit-backdrop-filter: blur(12px) saturate(120%);
+    border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    border-radius: 8px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03) !important;
+  }
+
+  /* ── Layout-хелперы ───────────────────────────────────── */
+  .vob-muted  { color: #71717a !important; }
+  .vob-scroll { overflow-y: auto; overflow-x: hidden; min-height: 0; }
+  .q-splitter__panel { overflow: hidden; }
+
+  /* ── Сайдбар ──────────────────────────────────────────── */
+  .vob-rail.vob-collapsed { width: 60px !important; min-width: 60px !important; }
+  .vob-rail.vob-collapsed .vob-rail-hide  { display: none !important; }
+  .vob-rail.vob-collapsed .q-tab__label   { display: none !important; }
+  .vob-rail.vob-collapsed .q-tab          { justify-content: center !important; }
+
+  /* Вкладки сайдбара */
+  .q-tab {
+    border-radius: 6px !important;
+    margin: 1px 6px !important;
+    padding: 0 10px !important;
+    min-height: 38px !important;
+    transition: background .12s, color .12s !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    color: #a1a1aa !important;
+  }
+  .q-tab:hover:not(.q-tab--active) {
+    background: rgba(255,255,255,0.04) !important;
+    color: #fafafa !important;
+  }
+  .q-tab--active {
+    background: rgba(167, 139, 250, 0.12) !important;
+    color: #a78bfa !important;
+  }
+  .q-tab__indicator { display: none !important; }
+
+  /* ── Tab-panels контент ───────────────────────────────── */
+  .q-tab-panel  { background: #09090b !important; }
+  .q-tab-panels { background: #09090b !important; }
+
+  /* ── Разделитель сплиттера ────────────────────────────── */
+  .q-splitter__separator {
+    background: transparent !important;
+    width: 10px !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: center;
+  }
+  .vob-grip {
+    width: 3px; height: 32px; border-radius: 99px;
+    background: #a78bfa; opacity: .2; transition: opacity .15s;
+  }
+  .q-splitter__separator:hover .vob-grip { opacity: .6; }
+
+  /* ── Кнопки ───────────────────────────────────────────── */
+  .q-btn {
+    border-radius: 6px !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    letter-spacing: 0 !important;
+    text-transform: none !important;
+    transition: background .12s, opacity .12s !important;
+  }
+  .q-btn.bg-primary { box-shadow: 0 0 0 1px rgba(167,139,250,.3) !important; }
+  .q-btn.bg-primary:hover { opacity: .88 !important; }
+  .q-btn--outline {
+    border-color: #3f3f46 !important;
+    color: #a1a1aa !important;
+  }
+  .q-btn--outline:hover {
+    border-color: #a78bfa !important;
+    color: #a78bfa !important;
+    background: rgba(167,139,250,.06) !important;
+  }
+  .q-btn--flat:hover { background: rgba(255,255,255,0.05) !important; }
+
+  /* Переключатель режимов учебника */
+  .q-btn-toggle .q-btn__content { white-space: nowrap; }
+  .q-btn-toggle .q-btn {
+    background: transparent !important;
+    border-color: #3f3f46 !important;
+    color: #71717a !important;
+  }
+  .q-btn-toggle .q-btn.q-btn--active,
+  .q-btn-toggle .q-btn[aria-pressed="true"] {
+    background: rgba(167,139,250,.15) !important;
+    color: #a78bfa !important;
+    border-color: rgba(167,139,250,.4) !important;
+  }
+
+  /* ── Поля ввода ───────────────────────────────────────── */
+  .q-field__control {
+    background: rgba(24,24,27,0.6) !important;
+    border-radius: 6px !important;
+  }
+  .q-field--outlined .q-field__control::before {
+    border-color: #3f3f46 !important;
+    border-radius: 6px !important;
+    transition: border-color .12s !important;
+  }
+  .q-field--outlined.q-field--focused .q-field__control::before,
+  .q-field--outlined:hover .q-field__control::before {
+    border-color: #a78bfa !important;
+  }
+  .q-field__label  { color: #71717a !important; font-size: 13px !important; }
+  .q-field__native,
+  .q-field__input  { color: #fafafa !important;  font-size: 13px !important; }
+  .q-field--filled .q-field__control { background: rgba(39,39,42,0.5) !important; }
+
+  /* ── Таблица вакансий ─────────────────────────────────── */
+  .vob-table table {
+    table-layout: fixed;
+    border-collapse: separate;
+    border-spacing: 0;
+  }
+  .vob-table thead th {
+    background: rgba(18, 18, 18, 0.98) !important;
+    color: #71717a !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+    text-transform: uppercase !important;
+    letter-spacing: .05em !important;
+    border-bottom: 1px solid #27272a !important;
+    padding: 8px 10px !important;
+  }
+  .vob-table tbody tr {
+    transition: background .1s !important;
+  }
+  .vob-table tbody tr:hover { background: rgba(167,139,250,0.04) !important; }
+  .vob-table tbody td {
+    font-size: 13px !important;
+    padding: 7px 10px !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-bottom: 1px solid rgba(255,255,255,0.03) !important;
+  }
+  /* Ресайз-хэндл колонок */
+  .vob-col-resizer {
+    position: absolute; top: 0; right: 0;
+    width: 4px; height: 100%;
+    cursor: col-resize; user-select: none; z-index: 2;
+    opacity: 0; transition: opacity .15s;
+  }
+  .vob-table thead th:hover .vob-col-resizer {
+    opacity: 1;
+    background: rgba(167,139,250,.4);
+  }
+
+  /* ── Чат интервью ─────────────────────────────────────── */
+  .q-message-text,
+  .q-message-text-content,
+  .q-message-text > div { color: #fafafa !important; }
+  .q-message-text {
+    background: rgba(39,39,42,0.8) !important;
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(255,255,255,0.06) !important;
+    border-radius: 10px !important;
+    line-height: 1.55;
+    padding: 9px 13px;
+  }
+  .q-message-text--sent {
+    background: rgba(109, 40, 217, 0.22) !important;
+    border-color: rgba(167,139,250,0.18) !important;
+  }
+  .q-message-text:last-child::before       { border-bottom-color: transparent !important; }
+  .q-message-text--sent:last-child::before { border-bottom-color: transparent !important; }
+  .q-message-name  { color: #a1a1aa !important; font-weight: 600; font-size: .78rem; }
+  .q-message-stamp { color: #52525b !important; font-size: .72rem; }
+
+  /* ── Markdown (учебник) ───────────────────────────────── */
+  .nicegui-markdown { line-height: 1.6; }
+  .nicegui-markdown h1 { font-size: 1.2rem;  font-weight: 700; margin: .6em 0 .3em;  color: #fafafa; }
+  .nicegui-markdown h2 { font-size: 1.05rem; font-weight: 600; margin: .5em 0 .25em; color: #e4e4e7; }
+  .nicegui-markdown h3 { font-size: .95rem;  font-weight: 600; margin: .4em 0 .2em;  color: #d4d4d8; }
+  .nicegui-markdown p  { margin: .45em 0; color: #d4d4d8; }
+  .nicegui-markdown ul,
+  .nicegui-markdown ol { margin: .4em 0; padding-left: 1.3em; color: #d4d4d8; }
+  .nicegui-markdown li { margin: .12em 0; line-height: 1.55; }
+  .nicegui-markdown code {
+    background: rgba(167,139,250,0.1);
+    border: 1px solid rgba(167,139,250,0.15);
+    padding: 1px 6px; border-radius: 4px;
+    font-size: .85em; color: #c4b5fd;
+  }
+  .nicegui-markdown pre {
+    background: #18181b;
+    border: 1px solid #27272a;
+    border-radius: 8px; padding: 12px 14px;
+    overflow-x: auto; margin: .6em 0;
+  }
+  .nicegui-markdown pre code {
+    background: transparent; border: none; padding: 0; color: #e4e4e7;
+  }
+  .nicegui-markdown strong { color: #fafafa; }
+  .nicegui-markdown a {
+    color: #a78bfa;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  .nicegui-markdown blockquote {
+    border-left: 3px solid #a78bfa;
+    margin: .5em 0; padding: .3em .8em;
+    background: rgba(167,139,250,0.05);
+    border-radius: 0 6px 6px 0;
+    color: #a1a1aa;
+  }
+
+  /* ── Separator ────────────────────────────────────────── */
+  .q-separator { background: #27272a !important; opacity: .7 !important; }
+
+  /* ── Expansion ────────────────────────────────────────── */
+  .q-expansion-item__container > .q-item:hover {
+    background: rgba(255,255,255,.03) !important;
+    border-radius: 6px !important;
+  }
+  .q-item__label { font-size: 13px !important; }
+
+  /* ── Badges ───────────────────────────────────────────── */
+  .q-badge {
+    border-radius: 5px !important;
+    font-size: 11px !important;
+    font-weight: 600 !important;
+  }
+
+  /* ── Tooltip ──────────────────────────────────────────── */
+  .q-tooltip {
+    background: #27272a !important;
+    color: #fafafa !important;
+    border: 1px solid #3f3f46 !important;
+    border-radius: 6px !important;
+    font-size: 12px !important;
+    font-family: 'Inter', sans-serif !important;
+  }
+
+  /* ── Spinner ──────────────────────────────────────────── */
+  .q-spinner { color: #a78bfa !important; }
+
+  /* ── Progress bar ─────────────────────────────────────── */
+  .q-linear-progress__track { background: #27272a !important; }
+
+  /* ── Select / Menu ────────────────────────────────────── */
+  .q-menu {
+    background: #18181b !important;
+    border: 1px solid #27272a !important;
+    border-radius: 8px !important;
+    box-shadow: 0 8px 32px rgba(0,0,0,.6) !important;
+  }
+  .q-item { color: #d4d4d8 !important; border-radius: 4px !important; }
+  .q-item:hover { background: rgba(255,255,255,.05) !important; }
+  .q-item--active { color: #a78bfa !important; }
+
+  /* ── Chip ─────────────────────────────────────────────── */
+  .q-chip {
+    background: rgba(39,39,42,0.7) !important;
+    border: 1px solid #3f3f46 !important;
+    border-radius: 99px !important;
+    color: #a1a1aa !important;
+    font-size: 12px !important;
+  }
+
+  /* ── TextField fill helper ────────────────────────────── */
+  .vob-fill, .vob-fill .q-field__control, .vob-fill .q-field__control textarea {
+    height: 100% !important;
+  }
+  .vob-fill .q-field__control textarea { resize: none; }
+</style>
+""")
+
+    # JS: drag-resize колонок таблицы
+    ui.add_body_html("""
+<script>
+function vobInitColResize() {
+  document.querySelectorAll('.vob-table thead tr th').forEach(function(th) {
+    if (th.querySelector('.vob-col-resizer')) return;
+    th.style.position = 'relative';
+    var handle = document.createElement('div');
+    handle.className = 'vob-col-resizer';
+    th.appendChild(handle);
+    handle.addEventListener('click', function(e) { e.stopPropagation(); });
+    handle.addEventListener('mousedown', function(e) {
+      var startX = e.pageX, startW = th.offsetWidth;
+      function onMove(ev) {
+        th.style.width = Math.max(48, startW + (ev.pageX - startX)) + 'px';
+      }
+      function onUp() {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        document.body.style.userSelect = '';
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+      document.body.style.userSelect = 'none';
+      e.preventDefault(); e.stopPropagation();
+    });
+  });
+}
+new MutationObserver(vobInitColResize).observe(document.body, {childList:true, subtree:true});
+document.addEventListener('DOMContentLoaded', vobInitColResize);
+setInterval(vobInitColResize, 1500);
+</script>
+""")
 
 
 def match_color(score) -> str:
@@ -163,7 +387,7 @@ def match_color(score) -> str:
         return MUTED
     score = int(score)
     if score >= 70:
-        return "#66bb6a"
+        return "#4ade80"
     if score >= 40:
-        return "#ff8f00"
-    return "#ef5350"
+        return "#fb923c"
+    return "#f87171"

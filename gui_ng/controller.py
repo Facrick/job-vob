@@ -223,11 +223,13 @@ class AppController:
                     # Насыщенный фон + белый текст: читаемо при любом цвете статуса
                     # (полупрозрачный фон со своим же цветом текста сливался — баг).
                     ui.badge(f"{label}: {n}").style(
-                        f"background-color:{color};color:#fff;font-weight:600"
+                        f"background-color:{color}22;color:{color};"
+                        f"border:1px solid {color}44;font-weight:600"
                     )
             # Письма существуют независимо от текущего этапа воронки — отдельный счётчик.
             ui.badge(f"✉ С письмом: {letters}").style(
-                "background-color:#5c6bc0;color:#fff;font-weight:600"
+                "background-color:#a78bfa22;color:#a78bfa;"
+                "border:1px solid #a78bfa44;font-weight:600"
             )
 
     def on_row_click(self, e):
@@ -929,12 +931,14 @@ class AppController:
                             color = GRADE_HEX[grade]
                             tag = grade[0] if grade != "Senior/Lead" else "S"
                             ui.badge(f"{tag}:{n}").style(
-                                f"background-color:{color};color:#fff;font-weight:600"
+                                f"background-color:{color}22;color:{color};"
+                                f"border:1px solid {color}44;font-weight:600"
                             )
                         ui.badge(str(item["count"])).style(
-                            "background-color:#5c6bc0;color:#fff;font-weight:700"
+                            "background-color:#a78bfa22;color:#a78bfa;"
+                            "border:1px solid #a78bfa44;font-weight:700"
                         )
-                    ui.linear_progress(value=ratio, show_value=False).props("color=indigo")
+                    ui.linear_progress(value=ratio, show_value=False).props("color=primary")
 
     def handle_clear_logs(self):
         self.el["logs"].clear()
@@ -1109,7 +1113,8 @@ class AppController:
             for skill, count in plan:
                 with ui.row().classes("items-center gap-2 w-full no-wrap"):
                     ui.badge(str(count)).style(
-                        "background-color:#7986cb26;color:#7986cb;font-weight:700"
+                        "background-color:#a78bfa22;color:#a78bfa;"
+                        "border:1px solid #a78bfa44;font-weight:700"
                     )
                     ui.label(skill).classes("text-sm truncate").style("flex:1 1 0;min-width:0")
                     topic = self.handbook.find_topic(skill)
@@ -1326,7 +1331,10 @@ class AppController:
         badge = self.el["ex_progress"]
         if attempted:
             badge.set_text(f"✓ Зачтено: {passed} из {attempted}")
-            badge.style("background-color:#5c6bc033;color:#9aa0b4")
+            badge.style(
+                "background-color:#a78bfa15;color:#71717a;"
+                "border:1px solid #a78bfa33"
+            )
             badge.set_visibility(True)
         else:
             badge.set_visibility(False)

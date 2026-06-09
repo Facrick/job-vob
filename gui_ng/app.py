@@ -15,7 +15,7 @@ from gui_ng.theme import apply_theme
 
 # Видимый маркер сборки — бампается при каждой правке, чтобы было видно,
 # что запущена свежая версия (а не старый процесс при reload=False).
-BUILD_TAG = "build 22 · exercises-validator"
+BUILD_TAG = "build 23 · shadcn-redesign"
 
 _TABS = [
     ("scout", "CRM", "search", views.build_scout_tab),
@@ -42,27 +42,36 @@ def index():
     with ui.row().classes("w-full h-full no-wrap gap-0"):
         # ── Сайдбар ───────────────────────────────────────────
         with ui.column().classes("vob-rail h-full no-wrap gap-0").style(
-            "width:216px;min-width:216px;background:#1a1b21;border-right:1px solid #2a2b33;"
-            "transition:width .15s"
+            "width:216px;min-width:216px;"
+            "background:#0c0c0e;"
+            "border-right:1px solid #1f1f23;"
+            "transition:width .18s cubic-bezier(.4,0,.2,1)"
         ) as sidebar:
-            with ui.row().classes("items-center gap-2 px-3 py-4 no-wrap w-full"):
+            # ── Логотип / заголовок ────────────────────────────
+            with ui.row().classes("items-center gap-2 px-3 py-3 no-wrap w-full"):
                 ui.button(icon="menu", on_click=lambda: _toggle_rail()).props(
-                    "flat round dense color=white"
-                ).tooltip("Свернуть/развернуть меню")
+                    "flat round dense"
+                ).style("color:#71717a").tooltip("Свернуть/развернуть")
                 with ui.column().classes("gap-0 vob-rail-hide"):
-                    ui.label("QA Assistant").classes("text-base font-bold leading-tight")
-                    ui.label("Pro · Job CRM").classes("text-xs vob-muted leading-tight")
-            ui.separator()
+                    ui.label("QA Assistant").classes(
+                        "text-sm font-semibold leading-tight"
+                    ).style("color:#fafafa;letter-spacing:-.01em")
+                    ui.label("Pro · Job CRM").classes(
+                        "text-xs leading-tight"
+                    ).style("color:#52525b")
+            ui.separator().style("opacity:.4")
+            # ── Навигационные вкладки ──────────────────────────
             with ui.tabs().props(
                 "vertical no-caps inline-label active-color=primary "
-                "indicator-color=primary"
-            ).classes("w-full flex-grow") as tabs:
+                "indicator-color=transparent"
+            ).classes("w-full flex-grow").style("padding:4px 0") as tabs:
                 for name, label, icon, _ in _TABS:
                     ui.tab(name, label=label, icon=icon).classes("justify-start")
             c.tabs = tabs
-            ui.separator()
-            ui.label(f"NiceGUI · {BUILD_TAG}").classes(
-                "text-xs vob-muted px-4 py-2 vob-rail-hide"
+            ui.separator().style("opacity:.4")
+            # ── Build tag ──────────────────────────────────────
+            ui.label("build 23").classes("vob-rail-hide").style(
+                "font-size:11px;color:#3f3f46;padding:6px 14px;letter-spacing:.03em"
             )
 
         rail = {"collapsed": False}
@@ -77,7 +86,7 @@ def index():
         # ── Контент ───────────────────────────────────────────
         with ui.tab_panels(tabs, value="scout").props("vertical keep-alive").classes(
             "flex-grow h-full"
-        ).style("background:#16171c"):
+        ).style("background:#09090b"):
             for name, _, _, builder in _TABS:
                 with ui.tab_panel(name).classes("p-3 h-full"):
                     builder(c)
