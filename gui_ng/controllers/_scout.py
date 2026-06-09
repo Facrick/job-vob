@@ -273,6 +273,55 @@ class _ScoutMixin:
                 ).style("color:#7986cb;font-weight:500;font-size:12px")
 
     async def handle_search(self):
+        """Запускает поиск. Если есть непросмотренные «Новые» вакансии — спрашивает подтверждение."""
+        n_discovered = len(self.repo.get_vacancies_filtered("discovered"))
+        if n_discovered:
+            confirmed = asyncio.Event()
+            cancelled = asyncio.Event()
+
+            with ui.dialog() as dlg, ui.card().style(
+                "background:#18181b;border:1px solid #27272a;min-width:420px"
+            ):
+                with ui.row().classes("items-center gap-2"):
+                    ui.icon("warning_amber", color="warning")
+                    ui.label("Удалить непросмотренные вакансии?").classes(
+                        "text-base font-semibold"
+                    ).style("color:#fafafa")
+                ui.label(
+                    f"В CRM есть {n_discovered} вакансий со статусом «Новая»."
+                ).classes("text-sm").style("color:#a1a1aa")
+                ui.label(
+                    "Новый поиск удалит их и заменит свежими результатами. "
+                    "Вакансии в других статусах (письмо, отклик, собеседование…) "
+                    "останутся нетронутыми."
+                ).classes("text-xs").style("color:#71717a")
+                with ui.row().classes("justify-end gap-2 w-full"):
+                    def _cancel():
+                        cancelled.set()
+                        dlg.close()
+
+                    def _confirm():
+                        confirmed.set()
+                        dlg.close()
+
+                    ui.button("Отмена", on_click=_cancel).props("flat no-caps")
+                    ui.button(
+                        "Продолжить", icon="search", on_click=_confirm
+                    ).props("no-caps")
+            dlg.open()
+            # Ждём действия пользователя
+            await asyncio.wait(
+                [asyncio.ensure_future(confirmed.wait()),
+                 asyncio.ensure_future(cancelled.wait())],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            if cancelled.is_set():
+                return
+
+        await self._do_search()
+
+    async def _do_search(self):
+        """Фактический запуск поиска вакансий на hh.ru."""
         keyword = (self.el["input_keyword"].value or "").strip() or "QA Engineer"
         period = self.el["combo_period"].value or "7"
         exp = self.el["combo_exp"].value or "between1And3"
