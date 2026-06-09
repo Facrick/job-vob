@@ -96,7 +96,7 @@ class _ScoutMixin:
         self._suppress_status_change = False
         self.el["detail_status"].set_visibility(True)
         self.el["detail_notes"].set_value(v.get("notes") or "")
-        for key in ("btn_generate", "btn_analyze", "btn_open_url"):
+        for key in ("btn_generate", "btn_analyze", "btn_open_url", "btn_delete_vacancy"):
             self.el[key].set_visibility(True)
 
         _APPLIED_STATUSES = {"applied", "interview", "offer", "rejected"}
@@ -121,6 +121,53 @@ class _ScoutMixin:
         saved_chat = self.repo.get_mock_interview(vid)
         self.mock_chat_history = saved_chat or []
         self._render_mock_chat()
+
+    def handle_delete_vacancy(self) -> None:
+        """Удалить текущую выбранную вакансию с подтверждением."""
+        vid = getattr(self, "selected_vacancy_id", None)
+        if not vid:
+            return
+        v = self.repo.get_vacancy_by_id(vid)
+        if not v:
+            return
+        title = v.get("title", "Без названия")
+        company = v.get("company", "")
+        label = f"{company} — {title}" if company else title
+
+        def _do_delete():
+            self.repo.delete_vacancy(vid)
+            self.selected_vacancy_id = None
+            # Скрываем панель деталей
+            self.el["detail_title"].set_text("Вакансия не выбрана")
+            self.el["detail_meta"].set_text(
+                "Кликните строку в таблице слева, чтобы увидеть подробности."
+            )
+            self.el["detail_meta"].style("")
+            self.el["detail_status"].set_visibility(False)
+            for key in ("btn_generate", "btn_analyze", "btn_open_url", "btn_delete_vacancy"):
+                self.el[key].set_visibility(False)
+            self.refresh_table_data()
+            ui.notify(f"Вакансия «{title}» удалена.", type="positive", icon="delete")
+            dlg.close()
+
+        with ui.dialog() as dlg, ui.card().style(
+            "background:#18181b;border:1px solid #27272a;min-width:400px"
+        ):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("warning", color="negative")
+                ui.label("Удалить вакансию?").classes("text-base font-semibold").style(
+                    "color:#fafafa"
+                )
+            ui.label(label).classes("text-sm").style("color:#a1a1aa")
+            ui.label(
+                "Будут удалены все связанные данные: письма, история интервью."
+            ).classes("text-xs").style("color:#71717a")
+            with ui.row().classes("justify-end gap-2 w-full"):
+                ui.button("Отмена", on_click=dlg.close).props("flat no-caps")
+                ui.button(
+                    "Удалить", on_click=_do_delete, icon="delete"
+                ).props("no-caps color=negative")
+        dlg.open()
 
     def toggle_filters(self):
         box = self.el["filters_row"]

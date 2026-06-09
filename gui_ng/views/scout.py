@@ -167,7 +167,10 @@ def build_scout_tab(c):
                         el["btn_open_url"] = ui.button(
                             "hh.ru", icon="open_in_new", on_click=c.open_vacancy_in_browser
                         ).props("outline no-caps")
-                    for k in ("btn_generate", "btn_analyze", "btn_open_url"):
+                        el["btn_delete_vacancy"] = ui.button(
+                            icon="delete_outline", on_click=c.handle_delete_vacancy
+                        ).props("outline no-caps color=negative").tooltip("Удалить вакансию")
+                    for k in ("btn_generate", "btn_analyze", "btn_open_url", "btn_delete_vacancy"):
                         el[k].set_visibility(False)
                     ui.separator()
                     with _scroll():

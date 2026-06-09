@@ -73,6 +73,32 @@ def test_mock_interview_roundtrip(repo):
     assert repo.get_mock_interview("7") == history
 
 
+def test_delete_vacancy_removes_vacancy_and_related(repo):
+    repo.save_vacancies([_vacancy("42")])
+    repo.save_cover_letter("42", "письмо", "рекомендации")
+    repo.save_mock_interview("42", [{"role": "user", "content": "вопрос"}])
+
+    repo.delete_vacancy("42")
+
+    assert repo.get_vacancy_by_id("42") is None
+    assert repo.get_cover_letter("42") is None
+    assert repo.get_mock_interview("42") is None
+    assert len(repo.get_vacancies_filtered("all")) == 0
+
+
+def test_delete_vacancy_nonexistent_is_safe(repo):
+    """Удаление несуществующей вакансии не бросает исключение."""
+    repo.delete_vacancy("no-such-id")  # должно пройти без ошибок
+
+
+def test_delete_vacancy_does_not_affect_others(repo):
+    repo.save_vacancies([_vacancy("1"), _vacancy("2")])
+    repo.delete_vacancy("1")
+    remaining = repo.get_vacancies_filtered("all")
+    assert len(remaining) == 1
+    assert remaining[0]["id"] == "2"
+
+
 def test_export_csv(repo, tmp_path):
     repo.save_vacancies([_vacancy("1"), _vacancy("2")])
     path = tmp_path / "out.csv"

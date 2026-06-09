@@ -127,6 +127,15 @@ class VacancyRepository:
                 )
             return [dict(row) for row in cursor.fetchall()]
 
+    def delete_vacancy(self, vacancy_id: str) -> None:
+        """Полностью удаляет вакансию и все связанные данные (письма, интервью)."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM cover_letters WHERE vacancy_id = ?", (vacancy_id,))
+            cursor.execute("DELETE FROM mock_interviews WHERE vacancy_id = ?", (vacancy_id,))
+            cursor.execute("DELETE FROM vacancies WHERE id = ?", (vacancy_id,))
+            conn.commit()
+
     def clear_discovered_vacancies(self):
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
