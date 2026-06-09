@@ -115,16 +115,17 @@ def build_scout_tab(c):
             with sp.before:
                 with _card("h-full"):
                     columns = [
-                        {"name": "match", "label": "Match", "field": "match",
-                         "align": "center", "headerStyle": "width:70px"},
+                        {"name": "match", "label": "Match", "field": "match_num",
+                         "align": "center", "sortable": True, "sort": "desc",
+                         "headerStyle": "width:70px"},
                         {"name": "company", "label": "Компания", "field": "company",
                          "align": "left", "sortable": True, "headerStyle": "width:150px"},
                         {"name": "title", "label": "Вакансия", "field": "title",
                          "align": "left", "sortable": True, "headerStyle": "width:230px"},
-                        {"name": "salary", "label": "З/п", "field": "salary",
-                         "align": "left", "headerStyle": "width:120px"},
-                        {"name": "status", "label": "Статус", "field": "status",
-                         "align": "center", "headerStyle": "width:96px"},
+                        {"name": "salary", "label": "З/п", "field": "salary_num",
+                         "align": "left", "sortable": True, "headerStyle": "width:120px"},
+                        {"name": "status", "label": "Статус", "field": "status_num",
+                         "align": "center", "sortable": True, "headerStyle": "width:96px"},
                     ]
                     table = ui.table(columns=columns, rows=[], row_key="id").classes(
                         "w-full h-full vob-table"

@@ -13,6 +13,12 @@ from gui_ng.theme import STATUS_STYLE, match_color
 class _ScoutMixin:
     """Методы вкладки CRM: таблица вакансий, воронка, поиск."""
 
+    # Порядок статусов для сортировки (чем выше — тем «активнее»)
+    _STATUS_SORT_ORDER = {
+        "offer": 6, "interview": 5, "applied": 4,
+        "processed": 3, "discovered": 2, "rejected": 1,
+    }
+
     def _row_dict(self, v: dict) -> dict:
         score = v.get("match_score")
         label, scolor = STATUS_STYLE.get(
@@ -21,13 +27,17 @@ class _ScoutMixin:
         return {
             "id": v["id"],
             "match": "—" if score is None else f"{int(score)}%",
+            # Числовые поля для сортировки: -1 означает «нет данных» → в конец
+            "match_num": int(score) if score is not None else -1,
             "match_color": match_color(score),
             "company": v.get("company", ""),
             "title": v.get("title", ""),
             "salary": self._format_salary(v.get("salary_min"), v.get("salary_max")),
+            "salary_num": int(v["salary_min"]) if v.get("salary_min") else -1,
             "salary_color": self._salary_color(v.get("salary_min"), v.get("salary_max")),
             "status": label,
             "status_color": scolor,
+            "status_num": self._STATUS_SORT_ORDER.get(v.get("status", ""), 0),
         }
 
     def refresh_table_data(self):
