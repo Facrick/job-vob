@@ -9,7 +9,7 @@ import os
 from dotenv import load_dotenv
 from nicegui import app, ui
 
-from gui_ng import views
+from gui_ng import views  # noqa: F401 – re-exported from gui_ng/views/__init__.py
 from gui_ng.controller import AppController
 from gui_ng.theme import apply_theme
 
