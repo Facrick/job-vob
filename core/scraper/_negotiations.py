@@ -60,8 +60,9 @@ class _NegotiationsMixin:
                 for idx, vid in enumerate(vacancy_ids, 1):
                     url = f"https://hh.ru/vacancy/{vid}"
                     logging.info(f"[Sync] {idx}/{total} → {url}")
+                    # Показываем «идёт загрузка» пока страница не открылась
                     if progress_callback:
-                        progress_callback(idx, total, f"{idx}/{total}: вакансия {vid}")
+                        progress_callback(idx, total, f"загружаю {vid}…")
 
                     try:
                         page.goto(url, wait_until="domcontentloaded", timeout=25000)
@@ -72,6 +73,12 @@ class _NegotiationsMixin:
                         logging.info(
                             f"[Sync] {vid}: статус = «{item['hh_status'] or 'не определён'}»"
                         )
+                        # Обновляем прогресс с реальным названием вакансии
+                        if progress_callback:
+                            company = item.get("company", "")
+                            title   = item.get("title", "")
+                            label = f"{company} — {title}" if company and title else title or vid
+                            progress_callback(idx, total, label)
                     except Exception as exc:
                         logging.warning(f"[Sync] Ошибка при проверке {vid}: {exc}")
                         results.append({
