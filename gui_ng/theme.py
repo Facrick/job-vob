@@ -286,6 +286,27 @@ def apply_theme() -> None:
     color: #a1a1aa;
   }
 
+  /* ── Описание вакансии (raw HTML из hh.ru) ───────────── */
+  .vob-vacancy-desc { line-height: 1.6; color: #d4d4d8; }
+  .vob-vacancy-desc p { margin: .45em 0; }
+  .vob-vacancy-desc ul,
+  .vob-vacancy-desc ol { margin: .4em 0; padding-left: 1.4em; }
+  .vob-vacancy-desc li { margin: .18em 0; }
+  .vob-vacancy-desc strong,
+  .vob-vacancy-desc b { color: #fafafa; font-weight: 600; }
+  .vob-vacancy-desc em,
+  .vob-vacancy-desc i { color: #a1a1aa; }
+  .vob-vacancy-desc a { color: #a78bfa; text-decoration: underline; text-underline-offset: 2px; }
+  .vob-vacancy-desc h1,.vob-vacancy-desc h2,.vob-vacancy-desc h3 {
+    color: #fafafa; font-weight: 600; margin: .6em 0 .25em;
+  }
+  .vob-vacancy-desc h1 { font-size: 1.1rem; }
+  .vob-vacancy-desc h2 { font-size: 1rem; }
+  .vob-vacancy-desc h3 { font-size: .95rem; }
+  /* Убираем отступ первого и лишние пустые блоки */
+  .vob-vacancy-desc > p:first-child { margin-top: 0; }
+  .vob-vacancy-desc br + br { display: none; }
+
   /* ── Separator ────────────────────────────────────────── */
   .q-separator { background: #27272a !important; opacity: .7 !important; }
 

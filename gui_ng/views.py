@@ -137,7 +137,7 @@ def build_scout_tab(c):
                     table.props("flat dense :rows-per-page-options=[0]")
                     table.add_slot("body-cell-match", """
                         <q-td :props="props">
-                          <q-badge :style="'color:'+props.row.match_color+';background-color:'+props.row.match_color+'22'">{{ props.row.match }}</q-badge>
+                          <q-badge :style="'background:'+props.row.match_color+'40'+';color:#fff;border:1px solid '+props.row.match_color+';font-weight:700;min-width:38px;text-align:center'">{{ props.row.match }}</q-badge>
                         </q-td>
                     """)
                     table.add_slot("body-cell-salary", """
@@ -147,7 +147,7 @@ def build_scout_tab(c):
                     """)
                     table.add_slot("body-cell-status", """
                         <q-td :props="props">
-                          <q-badge :style="'color:'+props.row.status_color+';background-color:'+props.row.status_color+'22'">{{ props.row.status }}</q-badge>
+                          <q-badge :style="'background:'+props.row.status_color+'33'+';color:#fff;border:1px solid '+props.row.status_color+'88;font-weight:600'">{{ props.row.status }}</q-badge>
                         </q-td>
                     """)
                     table.on("rowClick", c.on_row_click)
@@ -185,9 +185,9 @@ def build_scout_tab(c):
                         ui.label("Ключевые навыки").classes("text-sm font-semibold")
                         el["detail_skills"] = ui.label("—").classes("text-sm")
                         ui.label("Описание").classes("text-sm font-semibold mt-2")
-                        el["detail_description"] = ui.markdown("").classes(
-                            "text-sm w-full"
-                        ).style("color:#d7dae6")
+                        el["detail_description"] = ui.html("").classes(
+                            "vob-vacancy-desc text-sm w-full"
+                        )
                         ui.label("Заметки").classes("text-sm font-semibold mt-2")
                         el["detail_notes"] = ui.textarea(
                             placeholder="Личные заметки по вакансии..."

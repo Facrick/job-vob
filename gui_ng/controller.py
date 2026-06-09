@@ -258,7 +258,7 @@ class AppController:
         self.el["detail_skills"].set_text(v.get("skills") or "Не указаны")
         desc = v.get("description") or ""
         self.el["detail_description"].set_content(
-            html_to_markdown(desc) if desc else "_Описание отсутствует._"
+            _sanitize_hh_html(desc) if desc else "<em>Описание отсутствует.</em>"
         )
         self.el["detail_analysis"].set_content(
             "_Нажмите «Анализ ИИ», чтобы получить разбор вакансии._"
@@ -1476,6 +1476,26 @@ class AppController:
 
 
 # ── вспомогательные функции ──────────────────────────────────────
+_HH_UNSAFE = re.compile(
+    r"<(script|iframe|object|embed|form|input|button|link|style)[^>]*>.*?</\1>|"
+    r"<(script|iframe|object|embed|form|input|button|link|style)[^>]*/?>",
+    re.IGNORECASE | re.DOTALL,
+)
+_HH_ATTR_UNSAFE = re.compile(
+    r'\s+on\w+\s*=\s*["\'][^"\']*["\']', re.IGNORECASE
+)
+
+
+def _sanitize_hh_html(html: str) -> str:
+    """Оставляет форматирование hh.ru (абзацы, списки, жирный) — убирает только
+    скрипты, iframe, обработчики событий. Результат рендерится через ui.html()."""
+    if not html:
+        return ""
+    s = _HH_UNSAFE.sub("", html)
+    s = _HH_ATTR_UNSAFE.sub("", s)
+    return s.strip()
+
+
 def _q(hex_color: str) -> str:
     """Quasar принимает цвет как имя или как 'hex' через проп color — отдаём hex без #."""
     return hex_color  # linear_progress принимает CSS-цвет в props color
