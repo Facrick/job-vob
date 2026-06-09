@@ -110,6 +110,31 @@ def build_scout_tab(c):
                     "update:model-value", lambda _: c.handle_crm_search()
                 )
 
+        # Панель bulk-действий (скрыта пока нет выделения)
+        with ui.row().classes("items-center gap-2 w-full") as bulk_bar:
+            el["bulk_bar"] = bulk_bar
+            ui.icon("checklist", color="primary")
+            el["bulk_count_label"] = ui.label("").classes("text-sm font-semibold").style(
+                "color:#e4e4e7"
+            )
+            el["bulk_status_select"] = ui.select(
+                {"discovered": "Новая", "processed": "Письмо готово",
+                 "applied": "Отклик отправлен", "interview": "Собеседование",
+                 "offer": "Оффер!", "rejected": "Отказ"},
+                label="Новый статус",
+            ).props("dense outlined").classes("w-48")
+            ui.button(
+                "Применить", icon="done_all", on_click=c.handle_bulk_status
+            ).props("no-caps dense")
+            ui.button(
+                "Удалить", icon="delete_outline", on_click=c.handle_bulk_delete
+            ).props("outline no-caps dense color=negative")
+            ui.space()
+            ui.button(
+                "Снять выделение", icon="deselect", on_click=c.handle_bulk_deselect
+            ).props("flat no-caps dense").style("color:#71717a")
+        bulk_bar.set_visibility(False)
+
         # Таблица + детали
         with _split(58) as sp:
             with sp.before:
@@ -130,7 +155,8 @@ def build_scout_tab(c):
                     table = ui.table(columns=columns, rows=[], row_key="id").classes(
                         "w-full h-full vob-table"
                     )
-                    table.props("flat dense :rows-per-page-options=[0]")
+                    table.props("flat dense :rows-per-page-options=[0] selection=multiple")
+                    table.on("update:selected", c.handle_bulk_selection_change)
                     table.add_slot("body-cell-match", """
                         <q-td :props="props">
                           <q-badge :style="'background:'+props.row.match_color+'40'+';color:#fff;border:1px solid '+props.row.match_color+';font-weight:700;min-width:38px;text-align:center'">{{ props.row.match }}</q-badge>

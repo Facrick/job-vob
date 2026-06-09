@@ -160,6 +160,91 @@ class _ScoutMixin:
         self.mock_chat_history = saved_chat or []
         self._render_mock_chat()
 
+    # ── Bulk-действия ────────────────────────────────────────────────────────
+
+    def _get_selected_ids(self) -> list[str]:
+        """Список id строк, отмеченных чекбоксами в таблице."""
+        return [row["id"] for row in (self.el["table"].selected or [])]
+
+    def handle_bulk_selection_change(self, e) -> None:
+        """Вызывается при изменении выделения в таблице."""
+        selected = e.args if isinstance(e.args, list) else []
+        count = len(selected)
+        bar = self.el["bulk_bar"]
+        if count:
+            self.el["bulk_count_label"].set_text(f"Выбрано: {count}")
+            bar.set_visibility(True)
+        else:
+            bar.set_visibility(False)
+
+    def handle_bulk_deselect(self) -> None:
+        self.el["table"].selected = []
+        self.el["table"].update()
+        self.el["bulk_bar"].set_visibility(False)
+
+    def handle_bulk_status(self) -> None:
+        ids = self._get_selected_ids()
+        if not ids:
+            return
+        new_status = self.el["bulk_status_select"].value
+        if not new_status:
+            ui.notify("Выберите новый статус.", type="warning")
+            return
+        for vid in ids:
+            self.repo.update_status(vid, new_status)
+        _STATUS_LABEL = {
+            "discovered": "Новая", "processed": "Письмо готово",
+            "applied": "Отклик отправлен", "interview": "Собеседование",
+            "offer": "Оффер!", "rejected": "Отказ",
+        }
+        label = _STATUS_LABEL.get(new_status, new_status)
+        ui.notify(f"{len(ids)} вакансий → «{label}»", type="positive", icon="done_all")
+        self.handle_bulk_deselect()
+        self.refresh_table_data()
+
+    def handle_bulk_delete(self) -> None:
+        ids = self._get_selected_ids()
+        if not ids:
+            return
+        count = len(ids)
+
+        def _do_delete():
+            for vid in ids:
+                self.repo.delete_vacancy(vid)
+            if self.selected_vacancy_id in ids:
+                self.selected_vacancy_id = None
+                self.el["detail_title"].set_text("Вакансия не выбрана")
+                self.el["detail_meta"].set_text(
+                    "Кликните строку в таблице слева, чтобы увидеть подробности."
+                )
+                self.el["detail_status"].set_visibility(False)
+                for key in ("btn_generate", "btn_analyze", "btn_open_url", "btn_delete_vacancy"):
+                    self.el[key].set_visibility(False)
+            ui.notify(f"Удалено {count} вакансий.", type="positive", icon="delete")
+            dlg.close()
+            self.handle_bulk_deselect()
+            self.refresh_table_data()
+
+        with ui.dialog() as dlg, ui.card().style(
+            "background:#18181b;border:1px solid #27272a;min-width:400px"
+        ):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("warning", color="negative")
+                ui.label(f"Удалить {count} вакансий?").classes(
+                    "text-base font-semibold"
+                ).style("color:#fafafa")
+            ui.label(
+                "Будут удалены все связанные данные: письма, история интервью."
+            ).classes("text-xs").style("color:#71717a")
+            with ui.row().classes("justify-end gap-2 w-full"):
+                ui.button("Отмена", on_click=dlg.close).props("flat no-caps")
+                ui.button(
+                    "Удалить всё", on_click=_do_delete, icon="delete"
+                ).props("no-caps color=negative")
+        dlg.open()
+
+    # ── Одиночное удаление ────────────────────────────────────────────────────
+
     def handle_delete_vacancy(self) -> None:
         """Удалить текущую выбранную вакансию с подтверждением."""
         vid = getattr(self, "selected_vacancy_id", None)
