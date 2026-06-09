@@ -75,6 +75,11 @@ def build_scout_tab(c):
                 el["btn_resume"] = ui.button(
                     "Резюме", icon="upload_file", on_click=c.handle_resume_upload
                 ).props("outline no-caps").tooltip("Загрузить PDF-резюме")
+                el["btn_hh_sync"] = ui.button(
+                    "Синх. hh.ru", icon="sync", on_click=c.handle_hh_sync
+                ).props("outline no-caps").tooltip(
+                    "Обновить статусы вакансий по данным hh.ru (откликнулся/приглашён/отказ)"
+                )
                 el["btn_export"] = ui.button(
                     "Экспорт CSV", icon="download", on_click=c.handle_export
                 ).props("outline no-caps").tooltip("Выгрузить воронку в CSV")

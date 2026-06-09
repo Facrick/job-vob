@@ -28,6 +28,7 @@ from core.exercises import ExerciseBank
 from core.handbook import AI_SECTION, QAHandbook
 from core.interview_engine import MockInterviewEngine
 from core.matching import compute_match_score
+from core.hh_sync import sync_negotiations
 from core.parser import HHParser
 from core.paths import user_path
 from core.search_service import SearchService
@@ -708,6 +709,123 @@ class AppController:
     def recheck_hh_auth(self) -> None:
         """Ручной перезапуск проверки авторизации (кнопка ↺)."""
         ui.timer(0.01, self._check_hh_auth_async, once=True)
+
+    # ── Синхронизация статусов с hh.ru ────────────────────────────
+    def handle_hh_sync(self) -> None:
+        ui.timer(0.01, self._hh_sync_async, once=True)
+
+    async def _hh_sync_async(self) -> None:
+        btn = self.el["btn_hh_sync"]
+        btn.disable()
+        status_lbl = self.el["search_status"]
+        progress   = self.el["search_progress"]
+        status_lbl.set_text("Подключаюсь к hh.ru для синхронизации…")
+        status_lbl.set_visibility(True)
+        progress.set_visibility(True)
+        progress.set_value(None)  # indeterminate
+
+        try:
+            loop = asyncio.get_running_loop()
+
+            def on_progress(done, total, label=""):
+                def upd():
+                    status_lbl.set_text(f"Загружаю переговоры… {label} ({done} вакансий)")
+                loop.call_soon_threadsafe(upd)
+
+            negotiations = await run.io_bound(
+                HHParser().fetch_negotiations, on_progress
+            )
+
+            if not negotiations:
+                ui.notify("hh.ru: переговоров не найдено (или парсинг не удался).",
+                          type="warning")
+                return
+
+            status_lbl.set_text(f"Обновляю статусы в CRM ({len(negotiations)} переговоров)…")
+            result = sync_negotiations(self.repo, negotiations)
+            self.refresh_table_data()
+            self._update_funnel_counters()
+
+            # Обновляем индикатор авторизации заодно
+            self._set_hh_auth_ui(True)
+
+            # Диалог с итогами
+            self._show_sync_result_dialog(result)
+
+        except RuntimeError as ex:
+            # Не авторизован
+            self._show_error(str(ex))
+            self._set_hh_auth_ui(False)
+        except Exception as ex:
+            logging.error(f"[HH Sync] Ошибка: {ex}")
+            self._show_error(f"Ошибка синхронизации: {ex}")
+        finally:
+            btn.enable()
+            status_lbl.set_visibility(False)
+            progress.set_visibility(False)
+
+    def _show_sync_result_dialog(self, result) -> None:
+        _STATUS_LABEL = {
+            "discovered": "Новая",
+            "processed":  "Письмо готово",
+            "applied":    "Отклик отправлен",
+            "interview":  "Собеседование",
+            "offer":      "Оффер",
+            "rejected":   "Отказ",
+        }
+        _STATUS_COLOR = {
+            "applied":   "#60a5fa",
+            "interview": "#a78bfa",
+            "offer":     "#34d399",
+            "rejected":  "#f87171",
+        }
+
+        with ui.dialog() as dlg, ui.card().classes("gap-3").style(
+            "min-width:480px;max-width:640px;background:#18181b;border:1px solid #27272a"
+        ):
+            with ui.row().classes("items-center gap-2"):
+                ui.icon("sync", color="primary")
+                ui.label("Синхронизация с hh.ru завершена").classes(
+                    "text-base font-semibold"
+                ).style("color:#fafafa")
+
+            # Сводка
+            for line in result.summary_lines():
+                ui.label(line).classes("text-sm").style("color:#a1a1aa")
+
+            # Таблица обновлённых вакансий
+            if result.updated:
+                ui.separator().style("opacity:.3")
+                ui.label("Обновлённые вакансии:").classes("text-sm font-semibold").style(
+                    "color:#e4e4e7"
+                )
+                with ui.scroll_area().style("max-height:280px;width:100%"):
+                    for item in result.updated:
+                        old_lbl = _STATUS_LABEL.get(item["old"], item["old"])
+                        new_lbl = _STATUS_LABEL.get(item["new"], item["new"])
+                        new_col = _STATUS_COLOR.get(item["new"], "#a1a1aa")
+                        with ui.row().classes("items-center gap-2 w-full").style(
+                            "padding:4px 0;border-bottom:1px solid #27272a"
+                        ):
+                            with ui.column().classes("gap-0 flex-grow"):
+                                ui.label(item["title"] or item["vacancy_id"]).classes(
+                                    "text-sm"
+                                ).style("color:#e4e4e7")
+                                if item["company"]:
+                                    ui.label(item["company"]).classes("text-xs").style(
+                                        "color:#71717a"
+                                    )
+                            ui.label(f"{old_lbl} →").classes("text-xs").style(
+                                "color:#52525b;white-space:nowrap"
+                            )
+                            ui.label(new_lbl).classes("text-xs font-semibold").style(
+                                f"color:{new_col};white-space:nowrap"
+                            )
+
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Закрыть", on_click=dlg.close).props("flat no-caps")
+
+        dlg.open()
 
     def handle_hh_login(self) -> None:
         """Открывает браузер для ручного входа, затем перепроверяет статус."""
