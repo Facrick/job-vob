@@ -414,31 +414,34 @@ class HHParser:
 
     # ── Синхронизация переговоров ─────────────────────────────────────────────
 
-    # Ключевые слова hh.ru для определения статуса из текста блока переговора.
-    # Порядок важен: более специфичные — первыми.
-    _NEG_STATUS_KEYWORDS = [
+    # Ключевые слова для определения статуса из текста страницы вакансии.
+    # Ищем в зоне отклика/статуса — порядок важен (специфичные первыми).
+    _RESP_STATUS_KEYWORDS = [
         "оффер", "предложение о работе",
         "приглашение", "приглашен", "телефонное интервью", "интервью", "собеседование",
         "отказ", "отклонен", "не подошл",
-        "просмотрен", "ожидает", "отклик",
+        "просмотрен",
+        "отклик отправлен", "вы уже откликнулись", "отклик рассматривается",
     ]
 
     def fetch_negotiations(
         self,
+        vacancy_ids: list[str],
         progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> list[dict]:
-        """Собирает все переговоры с hh.ru /applicant/negotiations.
+        """Проверяет статус откликов по прямым ссылкам на вакансии из CRM.
 
-        Стратегия:
-        1. Проходит страницы ?page=0,1,2,… пока они дают новые вакансии.
-        2. На каждой странице скроллит до конца (infinite-scroll fallback).
-        3. Парсит полный HTML через BeautifulSoup — надёжнее Playwright-локаторов.
-        4. Дублирует поиск для /negotiations?state=all (архивные отклики).
-        5. Сохраняет debug-дамп HTML в logs/negotiations_debug.html при проблемах.
+        Принимает список vacancy_id из БД, заходит на каждую страницу
+        https://hh.ru/vacancy/{id} и читает текущий статус отклика.
+        Это надёжнее парсинга списка переговоров — DOM конкретной вакансии
+        стабильнее и мы точно знаем какие ID проверять.
 
         Возвращает список {vacancy_id, hh_status, title, company}.
         Поднимает RuntimeError если не авторизован.
         """
+        if not vacancy_ids:
+            return []
+
         with sync_playwright() as p:
             if not self._check_logged_in(p):
                 raise RuntimeError(
@@ -454,164 +457,119 @@ class HHParser:
             )
             try:
                 page = ctx.new_page()
-                seen_ids: set[str] = set()
                 results: list[dict] = []
+                total = len(vacancy_ids)
 
-                # Набор URL-шаблонов: активные + "все" (включая архивные)
-                base_urls = [
-                    "https://hh.ru/applicant/negotiations",
-                    "https://hh.ru/applicant/negotiations?state=all",
-                ]
+                for idx, vid in enumerate(vacancy_ids, 1):
+                    url = f"https://hh.ru/vacancy/{vid}"
+                    logging.info(f"[Sync] {idx}/{total} → {url}")
+                    if progress_callback:
+                        progress_callback(idx, total, f"{idx}/{total}: вакансия {vid}")
 
-                for base_url in base_urls:
-                    for page_num in range(30):  # до 30 страниц на каждый URL
-                        sep = "&" if "?" in base_url else "?"
-                        url = f"{base_url}{sep}page={page_num}"
-                        logging.info(f"[Sync] → {url}")
-                        try:
-                            page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                        except Exception as e:
-                            logging.warning(f"[Sync] Не удалось загрузить {url}: {e}")
-                            break
-
-                        # Ждём загрузки динамического контента
-                        page.wait_for_timeout(2000)
-
-                        # Скроллим до конца страницы (infinite scroll)
-                        prev_height = -1
-                        for _ in range(10):
-                            cur_height = page.evaluate("document.body.scrollHeight")
-                            if cur_height == prev_height:
-                                break
-                            prev_height = cur_height
-                            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-                            page.wait_for_timeout(800)
-
+                    try:
+                        page.goto(url, wait_until="domcontentloaded", timeout=25000)
+                        page.wait_for_timeout(1200)
                         html = page.content()
-                        new_items = self._parse_negotiations_html(html, seen_ids)
-
-                        if not new_items:
-                            # Сохраняем дамп HTML для отладки при первой пустой странице
-                            if page_num == 0:
-                                self._save_negotiations_debug_html(html, url)
-                            logging.info(
-                                f"[Sync] Стр. {page_num} не дала новых — стоп для {base_url}"
-                            )
-                            break
-
-                        for item in new_items:
-                            seen_ids.add(item["vacancy_id"])
-                        results.extend(new_items)
+                        item = self._check_vacancy_response_html(html, vid)
+                        results.append(item)
                         logging.info(
-                            f"[Sync] Стр. {page_num}: +{len(new_items)} "
-                            f"(итого: {len(results)})"
+                            f"[Sync] {vid}: статус = «{item['hh_status'] or 'не определён'}»"
                         )
-                        if progress_callback:
-                            progress_callback(
-                                len(results), len(results),
-                                f"стр. {page_num + 1}, найдено {len(results)}"
-                            )
+                    except Exception as exc:
+                        logging.warning(f"[Sync] Ошибка при проверке {vid}: {exc}")
+                        results.append({
+                            "vacancy_id": vid,
+                            "hh_status": "",
+                            "title": "",
+                            "company": "",
+                        })
 
-                logging.info(f"[Sync] Всего переговоров: {len(results)}")
                 return results
             finally:
                 ctx.close()
 
-    def _parse_negotiations_html(
-        self, html: str, seen_ids: set[str]
-    ) -> list[dict]:
-        """Парсит HTML страницы переговоров через BeautifulSoup.
+    def _check_vacancy_response_html(self, html: str, vacancy_id: str) -> dict:
+        """Извлекает статус отклика из HTML страницы вакансии.
 
-        Ищет все ссылки вида /vacancy/{id} и пытается извлечь статус
-        из текста ближайшего блока-контейнера.
+        hh.ru показывает статус в блоке рядом с кнопкой «Откликнуться»:
+        - data-qa="vacancy-response-status" / "response-status"
+        - Текст «Приглашение», «Отказ», «Отклик отправлен» и т.п.
+        Если вакансия закрыта/удалена — статус помечается как «закрыта».
         """
         soup = BeautifulSoup(html, "html.parser")
-        items: list[dict] = []
 
-        # Все ссылки на вакансии на странице
-        for a_tag in soup.find_all("a", href=re.compile(r"/vacancy/\d+")):
-            href = a_tag.get("href", "")
-            m = re.search(r"/vacancy/(\d+)", href)
-            if not m:
-                continue
-            vid = m.group(1)
-            if vid in seen_ids:
-                continue
+        title = ""
+        h1 = soup.find("h1", {"data-qa": re.compile(r"vacancy-title|vacancy-name", re.I)})
+        if not h1:
+            h1 = soup.find("h1")
+        if h1:
+            title = h1.get_text(strip=True)
 
-            title = a_tag.get_text(strip=True)
+        company = ""
+        for attrs in [
+            {"data-qa": re.compile(r"vacancy-company-name|employer-name", re.I)},
+            {"class": re.compile(r"vacancy-company-name|employer-name", re.I)},
+        ]:
+            tag = soup.find(attrs=attrs)
+            if tag:
+                company = tag.get_text(strip=True)
+                break
 
-            # Ищем статус в ближайшем блоке-предке, который содержит всю карточку
-            block = self._find_negotiation_block(a_tag)
-            block_text = block.get_text(" ", strip=True).lower() if block else ""
+        # Проверяем не закрыта ли вакансия
+        page_text = soup.get_text(" ", strip=True).lower()
+        if any(m in page_text for m in ("вакансия не найдена", "вакансия удалена",
+                                         "вакансия скрыта", "vacancy not found")):
+            return {"vacancy_id": vacancy_id, "hh_status": "закрыта",
+                    "title": title, "company": company}
 
-            status_text = ""
-            for keyword in self._NEG_STATUS_KEYWORDS:
-                if keyword in block_text:
+        # Ищем зону статуса отклика — сначала по data-qa, потом по ключевым словам
+        status_text = ""
+
+        # 1. Целевые data-qa элементы для статуса отклика
+        for dqa in [
+            "vacancy-response-status", "response-status",
+            "negotiations-status", "negotiation-status",
+        ]:
+            tag = soup.find(attrs={"data-qa": re.compile(dqa, re.I)})
+            if tag:
+                status_text = tag.get_text(strip=True).lower()
+                if status_text:
+                    break
+
+        # 2. Блок рядом с кнопкой отклика — ищем зону apply-кнопки и читаем текст
+        if not status_text:
+            for dqa in [
+                "vacancy-response-link-top", "vacancy-response-link-bottom",
+                "vacancy-response", "apply-block",
+            ]:
+                zone = soup.find(attrs={"data-qa": re.compile(dqa, re.I)})
+                if not zone:
+                    continue
+                # Идём на 2 уровня вверх — там обычно статус рядом с кнопкой
+                parent = zone.parent
+                if parent and parent.parent:
+                    parent = parent.parent
+                zone_text = parent.get_text(" ", strip=True).lower() if parent else ""
+                for keyword in self._RESP_STATUS_KEYWORDS:
+                    if keyword in zone_text:
+                        status_text = keyword
+                        break
+                if status_text:
+                    break
+
+        # 3. Ищем ключевые слова по всей странице (менее точно, но работает)
+        if not status_text:
+            for keyword in self._RESP_STATUS_KEYWORDS:
+                if keyword in page_text:
                     status_text = keyword
                     break
 
-            # Компания из соседних тегов
-            company = ""
-            if block:
-                for sel in [
-                    {"data-qa": re.compile(r"company|employer", re.I)},
-                    {"class": re.compile(r"company|employer", re.I)},
-                ]:
-                    tag = block.find(attrs=sel)
-                    if tag:
-                        company = tag.get_text(strip=True)
-                        break
-
-            items.append({
-                "vacancy_id": vid,
-                "hh_status": status_text,
-                "title": title,
-                "company": company,
-            })
-
-        return items
-
-    @staticmethod
-    def _find_negotiation_block(a_tag) -> "BeautifulSoup | None":
-        """Поднимается по дереву тегов в поиске блока-карточки переговора.
-
-        Критерий: тег содержит слова «negotiat», «response», «item»
-        в атрибутах class или data-qa, либо является достаточно крупным
-        div-ом (содержит 3+ дочерних тега).
-        """
-        _BLOCK_RE = re.compile(
-            r"negotiat|response|item|card|row|vacancy", re.I
-        )
-        node = a_tag.parent
-        for _ in range(8):  # не выше 8 уровней
-            if node is None or node.name in ("body", "html", "[document]"):
-                break
-            attrs_str = " ".join([
-                " ".join(node.get("class", [])),
-                node.get("data-qa", ""),
-            ])
-            if _BLOCK_RE.search(attrs_str):
-                return node
-            # Крупный блок с несколькими детьми тоже подходит
-            children = [c for c in node.children if hasattr(c, "name") and c.name]
-            if len(children) >= 3:
-                return node
-            node = node.parent
-        return a_tag.parent  # fallback: непосредственный родитель
-
-    def _save_negotiations_debug_html(self, html: str, url: str) -> None:
-        """Сохраняет дамп HTML в logs/ для ручной отладки селекторов."""
-        try:
-            log_dir = user_path("logs")
-            log_dir.mkdir(parents=True, exist_ok=True)
-            dump_path = log_dir / "negotiations_debug.html"
-            dump_path.write_text(html, encoding="utf-8")
-            logging.warning(
-                f"[Sync] Не найдено переговоров на {url}. "
-                f"HTML-дамп сохранён: {dump_path} — проверьте вручную."
-            )
-        except Exception as e:
-            logging.warning(f"[Sync] Не удалось сохранить debug-дамп: {e}")
+        return {
+            "vacancy_id": vacancy_id,
+            "hh_status": status_text,
+            "title": title,
+            "company": company,
+        }
 
     def _check_logged_in(self, p) -> bool:
         """Быстрая headless-проверка авторизации.

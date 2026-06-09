@@ -719,21 +719,39 @@ class AppController:
         btn.disable()
         status_lbl = self.el["search_status"]
         progress   = self.el["search_progress"]
-        status_lbl.set_text("Подключаюсь к hh.ru для синхронизации…")
+
+        # Берём только вакансии со статусами, где ожидается ответ от работодателя
+        _SYNC_STATUSES = {"applied", "interview", "offer"}
+        candidates = [
+            v for v in self.repo.get_vacancies_filtered("all")
+            if v.get("status") in _SYNC_STATUSES
+        ]
+        if not candidates:
+            ui.notify(
+                "Нет вакансий для проверки. Сначала отправьте отклики.",
+                type="info",
+            )
+            btn.enable()
+            return
+
+        vacancy_ids = [v["id"] for v in candidates]
+        total = len(vacancy_ids)
+        status_lbl.set_text(f"Проверяю {total} вакансий на hh.ru…")
         status_lbl.set_visibility(True)
         progress.set_visibility(True)
-        progress.set_value(None)  # indeterminate
+        progress.set_value(0)
 
         try:
             loop = asyncio.get_running_loop()
 
-            def on_progress(done, total, label=""):
+            def on_progress(done, total_, label=""):
                 def upd():
-                    status_lbl.set_text(f"Загружаю переговоры… {label} ({done} вакансий)")
+                    progress.set_value(done / total_ if total_ else None)
+                    status_lbl.set_text(f"Проверяю {label}")
                 loop.call_soon_threadsafe(upd)
 
             negotiations = await run.io_bound(
-                HHParser().fetch_negotiations, on_progress
+                HHParser().fetch_negotiations, vacancy_ids, on_progress
             )
 
             if not negotiations:
