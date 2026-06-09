@@ -277,6 +277,17 @@ class AppController:
         for key in ("btn_generate", "btn_analyze", "btn_open_url"):
             self.el[key].set_visibility(True)
 
+        # Кнопку автоотклика блокируем, если отклик уже отправлен
+        _APPLIED_STATUSES = {"applied", "interview", "offer", "rejected"}
+        already_applied = v.get("status", "") in _APPLIED_STATUSES
+        btn = self.el["btn_auto_apply"]
+        if already_applied:
+            btn.disable()
+            btn.tooltip("Отклик уже отправлен на эту вакансию")
+        else:
+            btn.enable()
+            btn.tooltip("")
+
         label = f"{v.get('company', '')} — {v.get('title', '')}"
         self.el["letter_vacancy_label"].set_text(label)
         self.el["letter_vacancy_label"].classes(remove="italic")
@@ -579,19 +590,22 @@ class AppController:
     async def _do_auto_apply_async(self):
         vid = self.selected_vacancy_id
         letter = self.el["text_letter"].value
-        self.el["btn_auto_apply"].disable()
+        btn = self.el["btn_auto_apply"]
+        btn.disable()
         try:
             success, msg = await run.io_bound(HHParser().auto_apply, vid, letter)
             if success:
                 self.repo.update_status(vid, "applied")
                 self.refresh_table_data()
+                btn.tooltip("Отклик уже отправлен на эту вакансию")
                 self._show_info("Отклик отправлен", msg)
+                # Кнопка остаётся заблокированной — отклик можно отправить только раз
             else:
                 self._show_error(msg)
+                btn.enable()  # разблокируем только при ошибке
         except Exception as ex:
             self._show_error(str(ex))
-        finally:
-            self.el["btn_auto_apply"].enable()
+            btn.enable()  # разблокируем только при ошибке
 
     def _do_auto_apply(self):
         ui.timer(0.01, self._do_auto_apply_async, once=True)
