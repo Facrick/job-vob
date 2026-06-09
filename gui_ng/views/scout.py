@@ -103,6 +103,12 @@ def build_scout_tab(c):
             )
             el["search_progress"].set_visibility(False)
             el["funnel_counters"] = ui.row().classes("gap-2 flex-wrap items-center")
+            with ui.row().classes("items-center gap-2 w-full"):
+                el["crm_search"] = ui.input(
+                    placeholder="🔍  Поиск по названию / компании…"
+                ).props("dense outlined clearable").classes("flex-grow").on(
+                    "update:model-value", lambda _: c.handle_crm_search()
+                )
 
         # Таблица + детали
         with _split(58) as sp:

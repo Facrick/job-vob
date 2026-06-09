@@ -35,10 +35,35 @@ class _ScoutMixin:
             return
         status_filter = self.el["status_filter"].value or "all"
         vacancies = self.repo.get_vacancies_filtered(status_filter)
-        self.el["table"].rows = [self._row_dict(v) for v in vacancies]
+        all_rows = [self._row_dict(v) for v in vacancies]
+        self._crm_all_rows = all_rows
+        self.el["table"].rows = self._filter_crm_rows(all_rows)
         self.el["table"].update()
         self._update_funnel_counters()
         self._render_funnel()
+
+    def _filter_crm_rows(self, rows: list[dict]) -> list[dict]:
+        """Фильтрует строки таблицы по тексту из поля crm_search."""
+        query = (self.el.get("crm_search") and self.el["crm_search"].value or "").strip().lower()
+        if not query:
+            return rows
+        return [
+            r for r in rows
+            if query in (r.get("title") or "").lower()
+            or query in (r.get("company") or "").lower()
+        ]
+
+    def handle_crm_search(self) -> None:
+        """Вызывается при вводе в поле поиска CRM — фильтрует строки без запроса к БД."""
+        if "table" not in self.el:
+            return
+        all_rows = getattr(self, "_crm_all_rows", None)
+        if all_rows is None:
+            # Кеш ещё не заполнен — делаем полную перезагрузку
+            self.refresh_table_data()
+            return
+        self.el["table"].rows = self._filter_crm_rows(all_rows)
+        self.el["table"].update()
 
     def _update_funnel_counters(self):
         all_vac = self.repo.get_vacancies_filtered("all")
@@ -292,6 +317,11 @@ class _ScoutMixin:
             )
 
         try:
+            # Сбрасываем текстовый фильтр, чтобы новые вакансии не скрывались
+            if "crm_search" in self.el:
+                self.el["crm_search"].set_value("")
+            self._crm_all_rows = None
+
             kept = [
                 v for v in self.repo.get_vacancies_filtered("all")
                 if v.get("status") != "discovered"
