@@ -220,6 +220,17 @@ class _LettersMixin:
             return
         self.repo.update_notes(self.selected_vacancy_id, self.el["detail_notes"].value or "")
 
+    def handle_hr_details_save(self):
+        """Сохраняет HR-поля (имя, контакты, дата собеседования) при потере фокуса."""
+        if not self.selected_vacancy_id:
+            return
+        self.repo.update_details(self.selected_vacancy_id, {
+            "hr_name":        self.el["detail_hr_name"].value or "",
+            "contacts":       self.el["detail_contacts"].value or "",
+            "interview_date": self.el["detail_interview_date"].value or "",
+            "notes":          self.el["detail_notes"].value or "",
+        })
+
     def _init_salary_field(self):
         exp = int(self.config.get("salary_expectation") or 0)
         self.el["salary_exp"].set_value(str(exp) if exp else "")

@@ -186,6 +186,23 @@ def build_scout_tab(c):
                         el["detail_description"] = ui.html("").classes(
                             "vob-vacancy-desc text-sm w-full"
                         )
+                        ui.label("HR / Контакты").classes("text-sm font-semibold mt-2")
+                        with ui.column().classes("gap-1 w-full"):
+                            el["detail_hr_name"] = ui.input(
+                                label="Имя HR", placeholder="Иванова Анна"
+                            ).props("dense outlined").classes("w-full").on(
+                                "blur", lambda _: c.handle_hr_details_save()
+                            )
+                            el["detail_contacts"] = ui.input(
+                                label="Контакты", placeholder="t.me/anna, +7 999 …"
+                            ).props("dense outlined").classes("w-full").on(
+                                "blur", lambda _: c.handle_hr_details_save()
+                            )
+                            el["detail_interview_date"] = ui.input(
+                                label="Дата собеседования", placeholder="2026-06-20 15:00"
+                            ).props("dense outlined").classes("w-full").on(
+                                "blur", lambda _: c.handle_hr_details_save()
+                            )
                         ui.label("Заметки").classes("text-sm font-semibold mt-2")
                         el["detail_notes"] = ui.textarea(
                             placeholder="Личные заметки по вакансии..."

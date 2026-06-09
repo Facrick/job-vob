@@ -121,6 +121,9 @@ class _ScoutMixin:
         self._suppress_status_change = False
         self.el["detail_status"].set_visibility(True)
         self.el["detail_notes"].set_value(v.get("notes") or "")
+        self.el["detail_hr_name"].set_value(v.get("hr_name") or "")
+        self.el["detail_contacts"].set_value(v.get("contacts") or "")
+        self.el["detail_interview_date"].set_value(v.get("interview_date") or "")
         for key in ("btn_generate", "btn_analyze", "btn_open_url", "btn_delete_vacancy"):
             self.el[key].set_visibility(True)
 
