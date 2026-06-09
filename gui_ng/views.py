@@ -54,6 +54,19 @@ def build_scout_tab(c):
                 ).tooltip("Свернуть/развернуть фильтры")
                 ui.space()
                 el["resume_label"] = ui.label("").classes("text-xs vob-muted")
+                # ── Индикатор авторизации hh.ru ───────────────────────────
+                el["hh_auth_badge"] = ui.badge("hh.ru …", color="grey-7").props(
+                    "rounded outline"
+                ).style("font-size:11px;cursor:default").tooltip(
+                    "Статус авторизации на hh.ru (проверяется при запуске)"
+                )
+                el["btn_hh_login"] = ui.button(
+                    "Войти", icon="login", on_click=c.handle_hh_login
+                ).props("flat no-caps dense").style(
+                    "font-size:12px;color:#a78bfa"
+                ).tooltip("Открыть браузер для входа на hh.ru")
+                el["btn_hh_login"].set_visibility(False)
+                # ─────────────────────────────────────────────────────────
                 el["btn_resume"] = ui.button(
                     "Резюме", icon="upload_file", on_click=c.handle_resume_upload
                 ).props("outline no-caps").tooltip("Загрузить PDF-резюме")

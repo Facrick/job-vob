@@ -404,6 +404,14 @@ class HHParser:
         'a[href*="/account/login"]',
     ]
 
+    def check_auth_status(self) -> bool:
+        """Публичная проверка авторизации на hh.ru (запускает headless Playwright).
+
+        Вызывается из UI-контроллера в фоне. Возвращает True если сессия активна.
+        """
+        with sync_playwright() as p:
+            return self._check_logged_in(p)
+
     def _check_logged_in(self, p) -> bool:
         """Быстрая headless-проверка авторизации.
 

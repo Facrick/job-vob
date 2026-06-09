@@ -107,6 +107,8 @@ class AppController:
         self.load_handbook()
         self._reset_topic_pane()
         self._refresh_resume_label()
+        # Проверяем авторизацию hh.ru в фоне — не блокируем запуск
+        ui.timer(1.0, self._check_hh_auth_async, once=True)
 
     def _setup_logging_bridge(self):
         log_dir = user_path("logs")
@@ -661,6 +663,53 @@ class AppController:
         self.el["resume_label"].set_text(
             f"📄 {path.name}" if path.exists() else "Резюме не загружено"
         )
+
+    # ── Авторизация hh.ru ──────────────────────────────────────────
+    def _set_hh_auth_ui(self, logged_in: bool) -> None:
+        badge = self.el["hh_auth_badge"]
+        btn = self.el["btn_hh_login"]
+        if logged_in:
+            badge.set_text("● hh.ru")
+            badge.props(remove="outline")
+            badge.style("font-size:11px;cursor:default;background:#16a34a22;color:#4ade80;border:1px solid #16a34a55")
+            btn.set_visibility(False)
+        else:
+            badge.set_text("○ hh.ru")
+            badge.style("font-size:11px;cursor:default;background:#7f1d1d22;color:#f87171;border:1px solid #7f1d1d55")
+            btn.set_visibility(True)
+
+    async def _check_hh_auth_async(self) -> None:
+        try:
+            logged_in = await run.io_bound(HHParser().check_auth_status)
+            self._set_hh_auth_ui(logged_in)
+            logging.info(f"🔐 Статус hh.ru: {'авторизован' if logged_in else 'не авторизован'}")
+        except Exception as ex:
+            logging.warning(f"[Auth] Не удалось проверить статус hh.ru: {ex}")
+            self.el["hh_auth_badge"].set_text("? hh.ru")
+
+    def handle_hh_login(self) -> None:
+        """Открывает браузер для ручного входа, затем перепроверяет статус."""
+        async def _login_and_recheck():
+            try:
+                self.el["btn_hh_login"].disable()
+                self.el["hh_auth_badge"].set_text("… вход")
+                from core.parser import HHParser
+                from playwright.sync_api import sync_playwright
+                def _do_login():
+                    with sync_playwright() as p:
+                        parser = HHParser()
+                        return parser._login_in_browser(p)
+                success = await run.io_bound(_do_login)
+                if success:
+                    self._set_hh_auth_ui(True)
+                    self._show_info("Авторизация hh.ru", "Вход выполнен успешно!")
+                else:
+                    self._set_hh_auth_ui(False)
+                    self._show_error("Авторизация отменена или не завершена.")
+            except Exception as ex:
+                self._show_error(f"Ошибка входа: {ex}")
+                self.el["btn_hh_login"].enable()
+        ui.timer(0.01, _login_and_recheck, once=True)
 
     @staticmethod
     def _native_win():
