@@ -665,40 +665,61 @@ class AppController:
         )
 
     # ── Авторизация hh.ru ──────────────────────────────────────────
+    _AUTH_STYLE_ON  = (
+        "font-size:11px;font-weight:600;letter-spacing:.02em;"
+        "padding:3px 8px;border-radius:6px;cursor:default;"
+        "color:#22c55e;background:#14532d33;border:1px solid #22c55e66"
+    )
+    _AUTH_STYLE_OFF = (
+        "font-size:11px;font-weight:600;letter-spacing:.02em;"
+        "padding:3px 8px;border-radius:6px;cursor:default;"
+        "color:#f87171;background:#7f1d1d33;border:1px solid #f8717166"
+    )
+    _AUTH_STYLE_WAIT = (
+        "font-size:11px;font-weight:600;letter-spacing:.02em;"
+        "padding:3px 8px;border-radius:6px;cursor:default;"
+        "color:#71717a;background:#27272a;border:1px solid #3f3f46"
+    )
+
     def _set_hh_auth_ui(self, logged_in: bool) -> None:
         badge = self.el["hh_auth_badge"]
-        btn = self.el["btn_hh_login"]
+        btn   = self.el["btn_hh_login"]
         if logged_in:
-            badge.set_text("● hh.ru")
-            badge.props(remove="outline")
-            badge.style("font-size:11px;cursor:default;background:#16a34a22;color:#4ade80;border:1px solid #16a34a55")
+            badge.set_text("⬤  hh.ru  авторизован")
+            badge.style(self._AUTH_STYLE_ON)
             btn.set_visibility(False)
         else:
-            badge.set_text("○ hh.ru")
-            badge.style("font-size:11px;cursor:default;background:#7f1d1d22;color:#f87171;border:1px solid #7f1d1d55")
+            badge.set_text("⬤  hh.ru  не авторизован")
+            badge.style(self._AUTH_STYLE_OFF)
             btn.set_visibility(True)
 
     async def _check_hh_auth_async(self) -> None:
+        self.el["hh_auth_badge"].set_text("⬤  hh.ru  проверка…")
+        self.el["hh_auth_badge"].style(self._AUTH_STYLE_WAIT)
         try:
             logged_in = await run.io_bound(HHParser().check_auth_status)
             self._set_hh_auth_ui(logged_in)
             logging.info(f"🔐 Статус hh.ru: {'авторизован' if logged_in else 'не авторизован'}")
         except Exception as ex:
             logging.warning(f"[Auth] Не удалось проверить статус hh.ru: {ex}")
-            self.el["hh_auth_badge"].set_text("? hh.ru")
+            self.el["hh_auth_badge"].set_text("⬤  hh.ru  ошибка проверки")
+            self.el["hh_auth_badge"].style(self._AUTH_STYLE_WAIT)
+
+    def recheck_hh_auth(self) -> None:
+        """Ручной перезапуск проверки авторизации (кнопка ↺)."""
+        ui.timer(0.01, self._check_hh_auth_async, once=True)
 
     def handle_hh_login(self) -> None:
         """Открывает браузер для ручного входа, затем перепроверяет статус."""
         async def _login_and_recheck():
             try:
                 self.el["btn_hh_login"].disable()
-                self.el["hh_auth_badge"].set_text("… вход")
-                from core.parser import HHParser
+                self.el["hh_auth_badge"].set_text("⬤  hh.ru  выполняется вход…")
+                self.el["hh_auth_badge"].style(self._AUTH_STYLE_WAIT)
                 from playwright.sync_api import sync_playwright
                 def _do_login():
                     with sync_playwright() as p:
-                        parser = HHParser()
-                        return parser._login_in_browser(p)
+                        return HHParser()._login_in_browser(p)
                 success = await run.io_bound(_do_login)
                 if success:
                     self._set_hh_auth_ui(True)

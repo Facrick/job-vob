@@ -55,17 +55,22 @@ def build_scout_tab(c):
                 ui.space()
                 el["resume_label"] = ui.label("").classes("text-xs vob-muted")
                 # ── Индикатор авторизации hh.ru ───────────────────────────
-                el["hh_auth_badge"] = ui.badge("hh.ru …", color="grey-7").props(
-                    "rounded outline"
-                ).style("font-size:11px;cursor:default").tooltip(
-                    "Статус авторизации на hh.ru (проверяется при запуске)"
-                )
+                el["hh_auth_badge"] = ui.label("⬤  hh.ru …").style(
+                    "font-size:11px;font-weight:600;letter-spacing:.02em;"
+                    "padding:3px 8px;border-radius:6px;cursor:default;"
+                    "color:#71717a;background:#27272a;border:1px solid #3f3f46"
+                ).tooltip("Статус авторизации на hh.ru")
                 el["btn_hh_login"] = ui.button(
                     "Войти", icon="login", on_click=c.handle_hh_login
                 ).props("flat no-caps dense").style(
                     "font-size:12px;color:#a78bfa"
                 ).tooltip("Открыть браузер для входа на hh.ru")
                 el["btn_hh_login"].set_visibility(False)
+                ui.button(
+                    icon="refresh", on_click=c.recheck_hh_auth
+                ).props("flat round dense").style("color:#52525b").tooltip(
+                    "Перепроверить статус авторизации hh.ru"
+                )
                 # ─────────────────────────────────────────────────────────
                 el["btn_resume"] = ui.button(
                     "Резюме", icon="upload_file", on_click=c.handle_resume_upload
