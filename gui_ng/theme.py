@@ -302,6 +302,10 @@ def apply_theme() -> None:
     font-size: 11px !important;
     font-weight: 600 !important;
   }
+  /* Quasar переопределяет color внутри badge — форсируем белый как базовый.
+     Динамические бейджи задают background через inline-style; color:#fff
+     гарантирует читаемость на любом полупрозрачном фоне. */
+  .q-badge { color: #fff !important; }
 
   /* ── Tooltip ──────────────────────────────────────────── */
   .q-tooltip {

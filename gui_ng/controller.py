@@ -223,13 +223,13 @@ class AppController:
                     # Насыщенный фон + белый текст: читаемо при любом цвете статуса
                     # (полупрозрачный фон со своим же цветом текста сливался — баг).
                     ui.badge(f"{label}: {n}").style(
-                        f"background-color:{color}22;color:{color};"
-                        f"border:1px solid {color}44;font-weight:600"
+                        f"background-color:{color}33;color:#fff;"
+                        f"border:1px solid {color}66;font-weight:600"
                     )
             # Письма существуют независимо от текущего этапа воронки — отдельный счётчик.
             ui.badge(f"✉ С письмом: {letters}").style(
-                "background-color:#a78bfa22;color:#a78bfa;"
-                "border:1px solid #a78bfa44;font-weight:600"
+                "background-color:#a78bfa33;color:#fff;"
+                "border:1px solid #a78bfa66;font-weight:600"
             )
 
     def on_row_click(self, e):
@@ -818,7 +818,7 @@ class AppController:
                 with ui.column().classes("w-full gap-1"):
                     with ui.row().classes("items-center gap-2"):
                         ui.badge(str(score)).style(
-                            f"background-color:{color}26;color:{color};font-weight:700"
+                            f"background-color:{color}33;color:#fff;font-weight:700"
                         )
                         ui.label(comp.get("name", "")).classes("font-medium")
                     ui.linear_progress(value=score / 10, show_value=False).props(
@@ -836,8 +836,8 @@ class AppController:
                 color = ("#66bb6a" if "рекомендую" in rec.lower()
                          else "#ff8f00" if "подготовка" in rec.lower() else "#ef5350")
                 ui.label(rec).style(
-                    f"background-color:{color}26;color:{color};font-weight:600;"
-                    "padding:8px 12px;border-radius:10px"
+                    f"background-color:{color}20;color:#fff;font-weight:500;"
+                    f"border:1px solid {color}55;padding:8px 12px;border-radius:8px"
                 )
 
     # ==================================================================
@@ -931,12 +931,12 @@ class AppController:
                             color = GRADE_HEX[grade]
                             tag = grade[0] if grade != "Senior/Lead" else "S"
                             ui.badge(f"{tag}:{n}").style(
-                                f"background-color:{color}22;color:{color};"
-                                f"border:1px solid {color}44;font-weight:600"
+                                f"background-color:{color}33;color:#fff;"
+                                f"border:1px solid {color}55;font-weight:600"
                             )
                         ui.badge(str(item["count"])).style(
-                            "background-color:#a78bfa22;color:#a78bfa;"
-                            "border:1px solid #a78bfa44;font-weight:700"
+                            "background-color:#a78bfa33;color:#fff;"
+                            "border:1px solid #a78bfa55;font-weight:700"
                         )
                     ui.linear_progress(value=ratio, show_value=False).props("color=primary")
 
@@ -1113,8 +1113,8 @@ class AppController:
             for skill, count in plan:
                 with ui.row().classes("items-center gap-2 w-full no-wrap"):
                     ui.badge(str(count)).style(
-                        "background-color:#a78bfa22;color:#a78bfa;"
-                        "border:1px solid #a78bfa44;font-weight:700"
+                        "background-color:#a78bfa33;color:#fff;"
+                        "border:1px solid #a78bfa55;font-weight:700"
                     )
                     ui.label(skill).classes("text-sm truncate").style("flex:1 1 0;min-width:0")
                     topic = self.handbook.find_topic(skill)
@@ -1332,8 +1332,8 @@ class AppController:
         if attempted:
             badge.set_text(f"✓ Зачтено: {passed} из {attempted}")
             badge.style(
-                "background-color:#a78bfa15;color:#71717a;"
-                "border:1px solid #a78bfa33"
+                "background-color:#a78bfa25;color:#fff;"
+                "border:1px solid #a78bfa44"
             )
             badge.set_visibility(True)
         else:
@@ -1351,7 +1351,10 @@ class AppController:
         color = "#66bb6a" if prog.get("passed") else "#ff8f00"
         mark = "✓ " if prog.get("passed") else ""
         badge.set_text(f"{mark}Лучший: {best}/100 · попыток: {attempts}")
-        badge.style(f"background-color:{color}33;color:{color};font-weight:600")
+        badge.style(
+            f"background-color:{color}33;color:#fff;"
+            f"border:1px solid {color}55;font-weight:600"
+        )
         badge.set_visibility(True)
 
     def load_exercise(self, topic: dict):
@@ -1448,7 +1451,10 @@ class AppController:
         color = "#66bb6a" if score >= 70 else "#ff8f00" if score >= 40 else "#ef5350"
         badge = self.el["ex_score_badge"]
         badge.set_text(f"{verdict} · {score}/100")
-        badge.style(f"background-color:{color}33;color:{color};font-weight:700")
+        badge.style(
+            f"background-color:{color}33;color:#fff;"
+            f"border:1px solid {color}55;font-weight:700"
+        )
         parts = []
         correct = data.get("correct") or []
         missing = data.get("missing") or []
