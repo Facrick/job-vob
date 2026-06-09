@@ -325,21 +325,32 @@ class AppController:
         c: dict[str, int] = {}
         for v in vac:
             c[v.get("status", "")] = c.get(v.get("status", ""), 0) + 1
-        offer = c.get("offer", 0)
-        interview = c.get("interview", 0) + offer
-        applied = c.get("applied", 0) + interview
-        letter = c.get("processed", 0) + applied
-        rejected = c.get("rejected", 0)
+
+        # Точные счётчики на каждый статус (без суммирования)
+        n_discovered = c.get("discovered", 0)
+        n_processed  = c.get("processed", 0)
+        n_applied    = c.get("applied", 0)
+        n_interview  = c.get("interview", 0)
+        n_offer      = c.get("offer", 0)
+        n_rejected   = c.get("rejected", 0)
+
+        # Для конверсионных метрик: кумулятивные "дошло до этапа"
+        reached_applied   = n_applied + n_interview + n_offer
+        reached_interview = n_interview + n_offer
+
         metrics = [
-            ("Всего", total, "#42a5f5"),
-            ("Отклики", applied, "#ff8f00"),
-            ("Собеседования", interview, "#ab47bc"),
-            ("Офферы", offer, "#66bb6a"),
-            ("Отказы", rejected, "#ef5350"),
+            ("Всего",         total,       "#42a5f5"),
+            ("С письмом",     n_processed, "#5c6bc0"),
+            ("Откликнулся",   n_applied,   "#ff8f00"),
+            ("Собеседования", n_interview, "#ab47bc"),
+            ("Офферы",        n_offer,     "#66bb6a"),
+            ("Отказы",        n_rejected,  "#ef5350"),
         ]
         with box:
             with ui.row().classes("gap-3 flex-wrap"):
                 for label, value, color in metrics:
+                    if value == 0 and label not in ("Всего",):
+                        continue
                     with ui.card().style(
                         f"background-color:{color}1f;padding:10px 14px"
                     ).props("flat"):
@@ -348,30 +359,30 @@ class AppController:
                         )
                         ui.label(label).classes("text-xs vob-muted")
             ui.separator()
+            # Воронка: каждый этап — точное кол-во вакансий на нём
             stages = [
-                ("Собрано", total, "#42a5f5"),
-                ("Письмо готово", letter, "#5c6bc0"),
-                ("Отклик отправлен", applied, "#ff8f00"),
-                ("Собеседование", interview, "#ab47bc"),
-                ("Оффер", offer, "#66bb6a"),
+                ("Новые",           n_discovered, "#42a5f5"),
+                ("Письмо готово",   n_processed,  "#5c6bc0"),
+                ("Отклик отправлен", n_applied,   "#ff8f00"),
+                ("Собеседование",   n_interview,  "#ab47bc"),
+                ("Оффер",           n_offer,      "#66bb6a"),
+                ("Отказ",           n_rejected,   "#ef5350"),
             ]
-            prev = None
             for label, count, color in stages:
-                ratio = count / total
-                conv = "" if not prev else f"   ·   конверсия {round(count / prev * 100)}%"
+                ratio = count / total if total else 0
                 with ui.column().classes("w-full gap-1"):
                     with ui.row().classes("w-full justify-between"):
                         ui.label(label).classes("font-medium")
                         ui.label(
-                            f"{count}  ·  {round(ratio * 100)}% от всех{conv}"
+                            f"{count}  ·  {round(ratio * 100)}% от всех"
                         ).classes("text-xs vob-muted")
                     ui.linear_progress(value=ratio, show_value=False).props(
                         f"color={_q(color)}"
                     )
-                prev = count
-            if applied:
-                resp = round(interview / applied * 100)
-                off = round(offer / interview * 100) if interview else 0
+            # Конверсионные метрики (считаем по кумулятивным "дошло до этапа")
+            if reached_applied:
+                resp = round(reached_interview / reached_applied * 100)
+                off  = round(n_offer / reached_interview * 100) if reached_interview else 0
                 ui.label(
                     f"Отклик → собеседование: {resp}%      "
                     f"Собеседование → оффер: {off}%"
@@ -870,17 +881,22 @@ class AppController:
 
     @staticmethod
     def _native_win():
-        """Активное окно pywebview (None в браузерном режиме)."""
-        win = getattr(app.native, "main_window", None)
-        if win is None and getattr(webview, "windows", None):
-            win = webview.windows[0]
-        return win
+        """Возвращает NiceGUI-обёртку нативного окна pywebview.
+
+        Важно: используем ТОЛЬКО app.native.main_window (NiceGUI-обёртка),
+        а не webview.windows[0] (сырой pywebview-объект). Сырой объект
+        не поддерживает await create_file_dialog() — это вызывало ошибку.
+        """
+        return getattr(app.native, "main_window", None)
 
     async def _pick_open_file(self, file_types: tuple[str, ...]) -> str | None:
-        """Нативный диалог открытия. create_file_dialog — корутина, ждём на главном loop."""
+        """Нативный диалог открытия файла через pywebview (awaitable через NiceGUI)."""
         win = self._native_win()
         if win is None:
-            self._show_error("Нативное окно недоступно.")
+            self._show_error(
+                "Нативное окно недоступно. "
+                "Убедитесь что приложение запущено в нативном режиме (не браузер)."
+            )
             return None
         try:
             result = await win.create_file_dialog(
@@ -895,10 +911,13 @@ class AppController:
         return result[0] if isinstance(result, (list, tuple)) else result
 
     async def _pick_save_file(self, default_name: str) -> str | None:
-        """Нативный диалог сохранения. Возвращает путь или None."""
+        """Нативный диалог сохранения файла через pywebview."""
         win = self._native_win()
         if win is None:
-            self._show_error("Нативное окно недоступно.")
+            self._show_error(
+                "Нативное окно недоступно. "
+                "Убедитесь что приложение запущено в нативном режиме (не браузер)."
+            )
             return None
         try:
             result = await win.create_file_dialog(
