@@ -41,6 +41,9 @@ def build_letters_tab(c):
                 el["btn_copy"] = ui.button(
                     "Копировать", icon="content_copy", on_click=c.copy_letter
                 ).props("outline no-caps").tooltip("Скопировать письмо в буфер")
+                el["btn_letter_history"] = ui.button(
+                    "История", icon="history", on_click=c.handle_letter_history
+                ).props("outline no-caps").tooltip("Просмотреть прошлые версии письма")
             el["btn_auto_apply"] = ui.button(
                 "Отправить автоотклик", icon="send", on_click=c.handle_auto_apply,
                 color="positive",

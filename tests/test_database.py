@@ -66,6 +66,34 @@ def test_cover_letter_absent(repo):
     assert repo.get_cover_letter("999") is None
 
 
+def test_letter_history_saves_versions(repo):
+    repo.save_vacancies([_vacancy("5")])
+    repo.save_cover_letter("5", "версия 1", "рек 1")
+    repo.save_cover_letter("5", "версия 2", "рек 2")
+    repo.save_cover_letter("5", "версия 3", "рек 3")
+    history = repo.get_letter_history("5")
+    assert len(history) == 3
+    # Новые первыми
+    assert history[0]["letter_text"] == "версия 3"
+    assert history[-1]["letter_text"] == "версия 1"
+
+
+def test_letter_history_trims_to_max(repo):
+    repo.save_vacancies([_vacancy("5")])
+    max_v = repo._MAX_LETTER_VERSIONS
+    for i in range(max_v + 2):
+        repo.save_cover_letter("5", f"версия {i}", "")
+    history = repo.get_letter_history("5")
+    assert len(history) == max_v
+    # Самая новая должна быть первой
+    assert history[0]["letter_text"] == f"версия {max_v + 1}"
+
+
+def test_letter_history_empty_for_new_vacancy(repo):
+    repo.save_vacancies([_vacancy("5")])
+    assert repo.get_letter_history("5") == []
+
+
 def test_mock_interview_roundtrip(repo):
     history = [{"role": "assistant", "content": "вопрос"},
                {"role": "user", "content": "ответ"}]

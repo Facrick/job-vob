@@ -47,6 +47,16 @@ class VacancyRepository:
                     FOREIGN KEY(vacancy_id) REFERENCES vacancies(id)
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cover_letter_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    vacancy_id TEXT NOT NULL,
+                    letter_text TEXT,
+                    recommendations TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY(vacancy_id) REFERENCES vacancies(id)
+                )
+            """)
             conn.commit()
 
     def get_vacancy_by_id(self, vacancy_id: str) -> dict | None:
@@ -145,14 +155,44 @@ class VacancyRepository:
             )
             conn.commit()
 
+    _MAX_LETTER_VERSIONS = 5
+
     def save_cover_letter(self, vacancy_id: str, letter: str, recs: str):
+        from datetime import datetime
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT OR REPLACE INTO cover_letters VALUES (?, ?, ?)",
                 (vacancy_id, letter, recs),
             )
+            # Сохраняем в историю версий
+            cursor.execute(
+                "INSERT INTO cover_letter_history (vacancy_id, letter_text, recommendations, created_at)"
+                " VALUES (?, ?, ?, ?)",
+                (vacancy_id, letter, recs, datetime.now().isoformat(timespec="seconds")),
+            )
+            # Удаляем старые версии, оставляем последние _MAX_LETTER_VERSIONS
+            cursor.execute(
+                "DELETE FROM cover_letter_history WHERE vacancy_id = ? AND id NOT IN ("
+                "  SELECT id FROM cover_letter_history WHERE vacancy_id = ?"
+                "  ORDER BY id DESC LIMIT ?"
+                ")",
+                (vacancy_id, vacancy_id, self._MAX_LETTER_VERSIONS),
+            )
             conn.commit()
+
+    def get_letter_history(self, vacancy_id: str) -> list[dict]:
+        """Возвращает историю версий письма (новые первыми), до _MAX_LETTER_VERSIONS."""
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, letter_text, recommendations, created_at"
+                " FROM cover_letter_history WHERE vacancy_id = ?"
+                " ORDER BY id DESC",
+                (vacancy_id,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
 
     def count_cover_letters(self) -> int:
         """Сколько вакансий имеют сохранённое сопроводительное письмо."""

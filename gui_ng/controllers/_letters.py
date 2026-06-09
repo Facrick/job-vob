@@ -131,6 +131,71 @@ class _LettersMixin:
         finally:
             self.el["btn_feedback"].enable()
 
+    def handle_letter_history(self) -> None:
+        """Показывает диалог с историей версий письма (до 5) с возможностью восстановить."""
+        if not self.selected_vacancy_id:
+            ui.notify("Выберите вакансию.", type="warning")
+            return
+        history = self.repo.get_letter_history(self.selected_vacancy_id)
+        if not history:
+            ui.notify("История версий пуста — письмо ещё не генерировалось.", type="info")
+            return
+
+        with ui.dialog() as dlg, ui.card().style(
+            "background:#18181b;border:1px solid #27272a;min-width:580px;max-width:760px"
+        ):
+            with ui.row().classes("items-center gap-2 w-full"):
+                ui.icon("history", color="primary")
+                ui.label(f"История версий письма ({len(history)})").classes(
+                    "text-base font-semibold flex-grow"
+                ).style("color:#fafafa")
+                ui.button(icon="close", on_click=dlg.close).props("flat round dense")
+
+            with ui.scroll_area().style("max-height:520px;width:100%"):
+                for i, ver in enumerate(history):
+                    is_first = i == 0
+                    num = len(history) - i
+                    date_str = ver.get("created_at", "")[:16].replace("T", " ")
+                    preview = (ver.get("letter_text") or "").strip()[:160]
+                    if len(ver.get("letter_text") or "") > 160:
+                        preview += "…"
+
+                    with ui.card().classes("w-full").style(
+                        "background:#27272a;border:1px solid "
+                        + ("#a78bfa66" if is_first else "#3f3f46")
+                        + ";margin-bottom:8px"
+                    ).props("flat"):
+                        with ui.row().classes("items-center gap-2 w-full"):
+                            with ui.column().classes("gap-0 flex-grow"):
+                                with ui.row().classes("items-center gap-2"):
+                                    ui.label(f"Версия {num}").classes(
+                                        "text-sm font-semibold"
+                                    ).style("color:#e4e4e7")
+                                    if is_first:
+                                        ui.badge("текущая").style(
+                                            "background:#a78bfa33;color:#a78bfa;"
+                                            "border:1px solid #a78bfa66"
+                                        )
+                                ui.label(date_str).classes("text-xs").style("color:#71717a")
+                            def _restore(v=ver):
+                                self.repo.save_cover_letter(
+                                    self.selected_vacancy_id,
+                                    v["letter_text"] or "",
+                                    v["recommendations"] or "",
+                                )
+                                self.el["text_letter"].set_value(v["letter_text"] or "")
+                                self.el["text_recs"].set_value(v["recommendations"] or "")
+                                ui.notify("Версия восстановлена.", type="positive", icon="history")
+                                dlg.close()
+                            if not is_first:
+                                ui.button(
+                                    "Восстановить", on_click=_restore
+                                ).props("flat no-caps dense").style("color:#a78bfa")
+                        ui.label(preview).classes("text-xs").style(
+                            "color:#a1a1aa;white-space:pre-wrap;margin-top:4px"
+                        )
+        dlg.open()
+
     def copy_letter(self):
         text = self.el["text_letter"].value or ""
         if text:
