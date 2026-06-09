@@ -4,8 +4,10 @@ import webbrowser
 
 from nicegui import run, ui
 
+from core.ai import LetterAnalyzer
 from core.parser import HHParser
 from core.utils import extract_salary_from_resume
+from gui_ng.controllers._helpers import _q
 
 
 class _LettersMixin:
@@ -130,6 +132,106 @@ class _LettersMixin:
             self._show_error(str(ex))
         finally:
             self.el["btn_feedback"].enable()
+
+    async def handle_score_letter(self) -> None:
+        """ИИ-оценка текущего письма по 4 критериям."""
+        if not self.selected_vacancy_id:
+            self._show_error("Выберите вакансию в таблице.")
+            return
+        letter = self.el["text_letter"].value or ""
+        if not letter.strip():
+            self._show_error("Письмо пустое — нечего оценивать.")
+            return
+
+        btn = self.el["btn_score_letter"]
+        btn.disable()
+        ui.notify("Оцениваю письмо…", type="info", timeout=2000)
+
+        try:
+            v = self.repo.get_vacancy_by_id(self.selected_vacancy_id)
+            title = (v or {}).get("title", "")
+            company = (v or {}).get("company", "")
+            description = (v or {}).get("description", "")
+
+            result = await run.io_bound(
+                LetterAnalyzer().score_cover_letter,
+                letter, title, company, description,
+            )
+        except Exception as ex:
+            self._show_error(f"Ошибка оценки: {ex}")
+            btn.enable()
+            return
+
+        btn.enable()
+
+        score = result.get("score", 0)
+        criteria = result.get("criteria", [])
+        summary = result.get("summary", "")
+
+        # Цвет общего балла
+        if score >= 80:
+            score_color = "#34d399"
+        elif score >= 60:
+            score_color = "#fbbf24"
+        else:
+            score_color = "#f87171"
+
+        _CRITERION_COLORS = {
+            range(0, 5):  "#f87171",
+            range(5, 7):  "#fbbf24",
+            range(7, 9):  "#60a5fa",
+            range(9, 11): "#34d399",
+        }
+
+        def _criterion_color(s: int) -> str:
+            for r, c in _CRITERION_COLORS.items():
+                if s in r:
+                    return c
+            return "#a1a1aa"
+
+        with ui.dialog() as dlg, ui.card().style(
+            "background:#18181b;border:1px solid #27272a;min-width:500px;max-width:680px"
+        ):
+            with ui.row().classes("items-center gap-3 w-full"):
+                ui.icon("grade", color="primary")
+                ui.label("Оценка письма").classes("text-base font-semibold flex-grow").style(
+                    "color:#fafafa"
+                )
+                ui.label(f"{score}/100").style(
+                    f"font-size:28px;font-weight:800;color:{score_color}"
+                )
+
+            if summary:
+                ui.label(summary).classes("text-sm").style("color:#a1a1aa")
+
+            if criteria:
+                ui.separator().style("opacity:.3")
+                with ui.column().classes("gap-2 w-full"):
+                    for crit in criteria:
+                        cname  = crit.get("name", "")
+                        cscore = int(crit.get("score", 0))
+                        cmax   = int(crit.get("max", 10))
+                        ccomment = crit.get("comment", "")
+                        ccolor = _criterion_color(cscore)
+                        with ui.row().classes("w-full items-start gap-2"):
+                            with ui.column().classes("flex-grow gap-1"):
+                                with ui.row().classes("w-full justify-between items-center"):
+                                    ui.label(cname).classes("text-sm font-semibold").style(
+                                        "color:#e4e4e7"
+                                    )
+                                    ui.label(f"{cscore}/{cmax}").classes("text-sm font-bold").style(
+                                        f"color:{ccolor}"
+                                    )
+                                ui.linear_progress(
+                                    value=cscore / cmax if cmax else 0,
+                                    show_value=False,
+                                ).props(f"color={_q(ccolor)} size=4px")
+                                if ccomment:
+                                    ui.label(ccomment).classes("text-xs").style("color:#71717a")
+
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Закрыть", on_click=dlg.close).props("flat no-caps")
+        dlg.open()
 
     def handle_letter_history(self) -> None:
         """Показывает диалог с историей версий письма (до 5) с возможностью восстановить."""

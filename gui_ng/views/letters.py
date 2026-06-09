@@ -44,6 +44,9 @@ def build_letters_tab(c):
                 el["btn_letter_history"] = ui.button(
                     "История", icon="history", on_click=c.handle_letter_history
                 ).props("outline no-caps").tooltip("Просмотреть прошлые версии письма")
+                el["btn_score_letter"] = ui.button(
+                    "Оценить", icon="grade", on_click=c.handle_score_letter
+                ).props("outline no-caps").tooltip("ИИ оценит письмо по 4 критериям")
             el["btn_auto_apply"] = ui.button(
                 "Отправить автоотклик", icon="send", on_click=c.handle_auto_apply,
                 color="positive",

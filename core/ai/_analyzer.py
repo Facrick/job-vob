@@ -130,6 +130,60 @@ class LetterAnalyzer:
         )
         return json.loads(content)
 
+    def score_cover_letter(
+        self, letter_text: str, title: str, company: str, description: str
+    ) -> dict:
+        """Оценивает сопроводительное письмо по 4 критериям.
+
+        Возвращает:
+        {
+            "score": 0-100,
+            "criteria": [{"name", "score", "max", "comment"}, ...],
+            "summary": "Краткий итог"
+        }
+        """
+        system_prompt = (
+            "Ты — опытный HR-специалист. Оцени сопроводительное письмо кандидата "
+            "по четырём критериям (каждый из 10 баллов) и дай краткий комментарий.\n\n"
+            "Критерии:\n"
+            "1. Релевантность — насколько письмо соответствует конкретной вакансии\n"
+            "2. Конкретность — есть ли конкретные примеры, достижения, цифры\n"
+            "3. Длина и структура — оптимальный объём, читаемость, логика\n"
+            "4. Тон и стиль — профессиональный, уверенный, без шаблонных фраз\n\n"
+            "Ответ строго в JSON:\n"
+            '{"score": <0-100>, '
+            '"criteria": ['
+            '  {"name": "...", "score": <0-10>, "max": 10, "comment": "..."},'
+            "  ..."
+            "], "
+            '"summary": "Краткий итог — 1-2 предложения."}'
+        )
+        user_prompt = (
+            f"Вакансия: {title} в компании {company}\n"
+            f"Описание вакансии (фрагмент):\n{description[:1500]}\n\n"
+            f"СОПРОВОДИТЕЛЬНОЕ ПИСЬМО:\n{letter_text[:2000]}"
+        )
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+        content = self._complete(
+            messages, temperature=0.1, json_mode=True,
+            max_tokens=600, model=self.analysis_model,
+        )
+        try:
+            data = json.loads(content)
+            score = max(0, min(100, int(data.get("score", 0))))
+            criteria = data.get("criteria") or []
+            return {
+                "score": score,
+                "criteria": criteria,
+                "summary": data.get("summary", ""),
+            }
+        except (json.JSONDecodeError, ValueError, TypeError) as e:
+            logging.error(f"[AI Score] Ошибка оценки письма: {e}")
+            return {"score": 0, "criteria": [], "summary": "Ошибка оценки."}
+
     def generate_handbook_article(
         self, topic: str, context: str = "", persona: str = ""
     ) -> dict[str, str]:
