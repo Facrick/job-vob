@@ -48,7 +48,6 @@ class _ScoutMixin:
         box = self.el.get("funnel_counters")
         if box is None:
             return
-        letters = self.repo.count_cover_letters()
         box.clear()
         with box:
             ui.label(f"Всего: {len(all_vac)}").classes("font-bold text-sm")
@@ -59,10 +58,6 @@ class _ScoutMixin:
                         f"background-color:{color}33;color:#fff;"
                         f"border:1px solid {color}66;font-weight:600"
                     )
-            ui.badge(f"✉ С письмом: {letters}").style(
-                "background-color:#a78bfa33;color:#fff;"
-                "border:1px solid #a78bfa66;font-weight:600"
-            )
 
     def on_row_click(self, e):
         try:
@@ -160,7 +155,6 @@ class _ScoutMixin:
 
         metrics = [
             ("Всего",         total,       "#42a5f5"),
-            ("С письмом",     n_processed, "#5c6bc0"),
             ("Откликнулся",   n_applied,   "#ff8f00"),
             ("Собеседования", n_interview, "#ab47bc"),
             ("Офферы",        n_offer,     "#66bb6a"),
