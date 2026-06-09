@@ -9,6 +9,9 @@ import os
 from dotenv import load_dotenv
 from nicegui import app, ui
 
+from core.backup import backup_database
+from core.paths import user_path
+
 from gui_ng import views  # noqa: F401 – re-exported from gui_ng/views/__init__.py
 from gui_ng.controller import AppController
 from gui_ng.theme import apply_theme
@@ -97,6 +100,9 @@ def index():
 def run_app():
     dotenv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
     load_dotenv(dotenv_path=dotenv_path)
+
+    # Резервная копия БД — одна в день, хранит последние 7. Ошибка не прерывает запуск.
+    backup_database(user_path("data/app.db"))
 
     native = os.getenv("VOB_BROWSER", "").lower() not in ("1", "true", "yes")
     kwargs = dict(
