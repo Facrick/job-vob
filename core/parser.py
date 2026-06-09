@@ -414,17 +414,30 @@ class HHParser:
 
     # ── Синхронизация переговоров ─────────────────────────────────────────────
 
+    # Ключевые слова hh.ru для определения статуса из текста блока переговора.
+    # Порядок важен: более специфичные — первыми.
+    _NEG_STATUS_KEYWORDS = [
+        "оффер", "предложение о работе",
+        "приглашение", "приглашен", "телефонное интервью", "интервью", "собеседование",
+        "отказ", "отклонен", "не подошл",
+        "просмотрен", "ожидает", "отклик",
+    ]
+
     def fetch_negotiations(
         self,
         progress_callback: Callable[[int, int, str], None] | None = None,
     ) -> list[dict]:
-        """Собирает все переговоры (отклики) с hh.ru /applicant/negotiations.
+        """Собирает все переговоры с hh.ru /applicant/negotiations.
 
-        Возвращает список:
-            {vacancy_id, hh_status, title, company}
+        Стратегия:
+        1. Проходит страницы ?page=0,1,2,… пока они дают новые вакансии.
+        2. На каждой странице скроллит до конца (infinite-scroll fallback).
+        3. Парсит полный HTML через BeautifulSoup — надёжнее Playwright-локаторов.
+        4. Дублирует поиск для /negotiations?state=all (архивные отклики).
+        5. Сохраняет debug-дамп HTML в logs/negotiations_debug.html при проблемах.
 
-        Обрабатывает пагинацию автоматически (до 30 страниц / 600 вакансий).
-        Поднимает RuntimeError если пользователь не авторизован.
+        Возвращает список {vacancy_id, hh_status, title, company}.
+        Поднимает RuntimeError если не авторизован.
         """
         with sync_playwright() as p:
             if not self._check_logged_in(p):
@@ -441,172 +454,164 @@ class HHParser:
             )
             try:
                 page = ctx.new_page()
+                seen_ids: set[str] = set()
                 results: list[dict] = []
-                page_num = 0
 
-                while page_num < 30:
-                    url = (
-                        f"https://hh.ru/applicant/negotiations"
-                        f"?page={page_num}&per_page=20"
-                    )
-                    logging.info(f"[Sync] Загружаю переговоры стр. {page_num + 1}: {url}")
-                    page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                    page.wait_for_timeout(1500)
+                # Набор URL-шаблонов: активные + "все" (включая архивные)
+                base_urls = [
+                    "https://hh.ru/applicant/negotiations",
+                    "https://hh.ru/applicant/negotiations?state=all",
+                ]
 
-                    items = self._parse_negotiations_page(page)
-                    if not items:
-                        break
-                    results.extend(items)
-                    logging.info(
-                        f"[Sync] Стр. {page_num + 1}: найдено {len(items)} переговоров "
-                        f"(всего: {len(results)})"
-                    )
-                    if progress_callback:
-                        progress_callback(len(results), len(results), f"стр. {page_num + 1}")
+                for base_url in base_urls:
+                    for page_num in range(30):  # до 30 страниц на каждый URL
+                        sep = "&" if "?" in base_url else "?"
+                        url = f"{base_url}{sep}page={page_num}"
+                        logging.info(f"[Sync] → {url}")
+                        try:
+                            page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                        except Exception as e:
+                            logging.warning(f"[Sync] Не удалось загрузить {url}: {e}")
+                            break
 
-                    # Проверяем наличие следующей страницы
-                    next_btn = page.locator(
-                        '[data-qa="pager-next"], a[rel="next"], '
-                        'a:has-text("следующая"), a:has-text("дальше")'
-                    ).first
-                    has_next = next_btn.count() > 0 and next_btn.is_visible()
-                    if not has_next:
-                        break
-                    page_num += 1
+                        # Ждём загрузки динамического контента
+                        page.wait_for_timeout(2000)
 
+                        # Скроллим до конца страницы (infinite scroll)
+                        prev_height = -1
+                        for _ in range(10):
+                            cur_height = page.evaluate("document.body.scrollHeight")
+                            if cur_height == prev_height:
+                                break
+                            prev_height = cur_height
+                            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+                            page.wait_for_timeout(800)
+
+                        html = page.content()
+                        new_items = self._parse_negotiations_html(html, seen_ids)
+
+                        if not new_items:
+                            # Сохраняем дамп HTML для отладки при первой пустой странице
+                            if page_num == 0:
+                                self._save_negotiations_debug_html(html, url)
+                            logging.info(
+                                f"[Sync] Стр. {page_num} не дала новых — стоп для {base_url}"
+                            )
+                            break
+
+                        for item in new_items:
+                            seen_ids.add(item["vacancy_id"])
+                        results.extend(new_items)
+                        logging.info(
+                            f"[Sync] Стр. {page_num}: +{len(new_items)} "
+                            f"(итого: {len(results)})"
+                        )
+                        if progress_callback:
+                            progress_callback(
+                                len(results), len(results),
+                                f"стр. {page_num + 1}, найдено {len(results)}"
+                            )
+
+                logging.info(f"[Sync] Всего переговоров: {len(results)}")
                 return results
             finally:
                 ctx.close()
 
-    def _parse_negotiations_page(self, page: "Page") -> list[dict]:
-        """Парсит одну страницу /applicant/negotiations.
+    def _parse_negotiations_html(
+        self, html: str, seen_ids: set[str]
+    ) -> list[dict]:
+        """Парсит HTML страницы переговоров через BeautifulSoup.
 
-        Использует несколько стратегий для устойчивости к изменениям DOM hh.ru.
+        Ищет все ссылки вида /vacancy/{id} и пытается извлечь статус
+        из текста ближайшего блока-контейнера.
         """
+        soup = BeautifulSoup(html, "html.parser")
         items: list[dict] = []
 
-        # ── Стратегия 1: data-qa="negotiations-item" ──────────────────────────
-        els = page.locator('[data-qa="negotiations-item"]').all()
-
-        # ── Стратегия 2: обёртки списка (имена классов менялись) ──────────────
-        if not els:
-            els = page.locator(
-                '.negotiation-list__item, .negotiations-list__item, '
-                '[class*="negotiations"][class*="item"]'
-            ).all()
-
-        # ── Стратегия 3: весь список переговоров как fallback ─────────────────
-        if not els:
-            container = page.locator(
-                '[data-qa="negotiations-list"], '
-                '.negotiations-list, [class*="negotiation-list"]'
-            ).first
-            if container.count():
-                els = container.locator("> *").all()
-
-        for el in els:
-            try:
-                item = self._extract_negotiation_item(el)
-                if item:
-                    items.append(item)
-            except Exception as exc:
-                logging.debug(f"[Sync] Пропускаю элемент: {exc}")
-
-        # ── Стратегия 4: грубый поиск vacancy-ссылок на странице ─────────────
-        # Используем только если ни одна из выше не сработала
-        if not items:
-            items = self._parse_negotiations_fallback(page)
-
-        return items
-
-    def _extract_negotiation_item(self, el) -> dict | None:
-        """Извлекает vacancy_id, hh_status, title, company из одного элемента."""
-        # Vacancy ID из ссылки /vacancy/{id}
-        link = el.locator('a[href*="/vacancy/"]').first
-        if not link.count():
-            return None
-        href = link.get_attribute("href") or ""
-        m = re.search(r"/vacancy/(\d+)", href)
-        if not m:
-            return None
-        vacancy_id = m.group(1)
-        title = (link.text_content() or "").strip()
-
-        # Статус: пробуем несколько селекторов
-        status_text = ""
-        for sel in [
-            '[data-qa="negotiations-status"]',
-            '[data-qa="negotiation-status"]',
-            ".negotiation-status",
-            ".label--status",
-            "[class*='status']",
-            "[class*='label']",
-        ]:
-            s = el.locator(sel).first
-            if s.count():
-                t = (s.text_content() or "").strip()
-                if t:
-                    status_text = t
-                    break
-
-        # Компания
-        company = ""
-        for sel in [
-            '[data-qa="negotiations-company-name"]',
-            '[data-qa="vacancy-company-name"]',
-            ".company-name",
-            "[class*='company']",
-        ]:
-            c = el.locator(sel).first
-            if c.count():
-                company = (c.text_content() or "").strip()
-                break
-
-        return {
-            "vacancy_id": vacancy_id,
-            "hh_status": status_text.lower(),
-            "title": title,
-            "company": company,
-        }
-
-    def _parse_negotiations_fallback(self, page: "Page") -> list[dict]:
-        """Запасная стратегия: ищет все ссылки /vacancy/ на странице переговоров."""
-        items: list[dict] = []
-        seen: set[str] = set()
-        links = page.locator('a[href*="/vacancy/"]').all()
-        for link in links:
-            href = link.get_attribute("href") or ""
+        # Все ссылки на вакансии на странице
+        for a_tag in soup.find_all("a", href=re.compile(r"/vacancy/\d+")):
+            href = a_tag.get("href", "")
             m = re.search(r"/vacancy/(\d+)", href)
             if not m:
                 continue
             vid = m.group(1)
-            if vid in seen:
+            if vid in seen_ids:
                 continue
-            seen.add(vid)
-            title = (link.text_content() or "").strip()
-            # Статус ищем в ближайших соседях (parent → text)
+
+            title = a_tag.get_text(strip=True)
+
+            # Ищем статус в ближайшем блоке-предке, который содержит всю карточку
+            block = self._find_negotiation_block(a_tag)
+            block_text = block.get_text(" ", strip=True).lower() if block else ""
+
             status_text = ""
-            try:
-                parent_html = page.evaluate(
-                    "(el) => el.closest('[class*=negotiation],[class*=item]') "
-                    "?.innerText || ''",
-                    link.element_handle(),
-                )
-                # Ищем слова-статусы в тексте блока
-                from core.hh_sync import _HH_KEYWORDS
-                for keyword, _ in _HH_KEYWORDS:
-                    if keyword in (parent_html or "").lower():
-                        status_text = keyword
+            for keyword in self._NEG_STATUS_KEYWORDS:
+                if keyword in block_text:
+                    status_text = keyword
+                    break
+
+            # Компания из соседних тегов
+            company = ""
+            if block:
+                for sel in [
+                    {"data-qa": re.compile(r"company|employer", re.I)},
+                    {"class": re.compile(r"company|employer", re.I)},
+                ]:
+                    tag = block.find(attrs=sel)
+                    if tag:
+                        company = tag.get_text(strip=True)
                         break
-            except Exception:
-                pass
+
             items.append({
                 "vacancy_id": vid,
                 "hh_status": status_text,
                 "title": title,
-                "company": "",
+                "company": company,
             })
+
         return items
+
+    @staticmethod
+    def _find_negotiation_block(a_tag) -> "BeautifulSoup | None":
+        """Поднимается по дереву тегов в поиске блока-карточки переговора.
+
+        Критерий: тег содержит слова «negotiat», «response», «item»
+        в атрибутах class или data-qa, либо является достаточно крупным
+        div-ом (содержит 3+ дочерних тега).
+        """
+        _BLOCK_RE = re.compile(
+            r"negotiat|response|item|card|row|vacancy", re.I
+        )
+        node = a_tag.parent
+        for _ in range(8):  # не выше 8 уровней
+            if node is None or node.name in ("body", "html", "[document]"):
+                break
+            attrs_str = " ".join([
+                " ".join(node.get("class", [])),
+                node.get("data-qa", ""),
+            ])
+            if _BLOCK_RE.search(attrs_str):
+                return node
+            # Крупный блок с несколькими детьми тоже подходит
+            children = [c for c in node.children if hasattr(c, "name") and c.name]
+            if len(children) >= 3:
+                return node
+            node = node.parent
+        return a_tag.parent  # fallback: непосредственный родитель
+
+    def _save_negotiations_debug_html(self, html: str, url: str) -> None:
+        """Сохраняет дамп HTML в logs/ для ручной отладки селекторов."""
+        try:
+            log_dir = user_path("logs")
+            log_dir.mkdir(parents=True, exist_ok=True)
+            dump_path = log_dir / "negotiations_debug.html"
+            dump_path.write_text(html, encoding="utf-8")
+            logging.warning(
+                f"[Sync] Не найдено переговоров на {url}. "
+                f"HTML-дамп сохранён: {dump_path} — проверьте вручную."
+            )
+        except Exception as e:
+            logging.warning(f"[Sync] Не удалось сохранить debug-дамп: {e}")
 
     def _check_logged_in(self, p) -> bool:
         """Быстрая headless-проверка авторизации.
