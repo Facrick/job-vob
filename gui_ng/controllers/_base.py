@@ -81,6 +81,7 @@ class _AppControllerBase:
         self._reset_topic_pane()
         self._refresh_resume_label()
         ui.timer(1.0, self._check_hh_auth_async, once=True)
+        self._restore_autosync_state()
 
     def _setup_logging_bridge(self):
         log_dir = user_path("logs")

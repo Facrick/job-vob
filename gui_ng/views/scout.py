@@ -42,6 +42,9 @@ def build_scout_tab(c):
                 ).props("outline no-caps").tooltip(
                     "Обновить статусы вакансий по данным hh.ru"
                 )
+                el["toggle_autosync"] = ui.switch(
+                    "Авто", on_change=c.handle_autosync_toggle
+                ).tooltip("Автоматически синхронизировать статусы раз в час").classes("text-xs")
                 el["btn_export"] = ui.button(
                     "Экспорт CSV", icon="download", on_click=c.handle_export
                 ).props("outline no-caps").tooltip("Выгрузить воронку в CSV")

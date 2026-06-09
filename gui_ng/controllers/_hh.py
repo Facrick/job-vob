@@ -55,8 +55,48 @@ class _HHMixin:
         """Ручной перезапуск проверки авторизации (кнопка ↺)."""
         ui.timer(0.01, self._check_hh_auth_async, once=True)
 
+    _AUTOSYNC_INTERVAL = 3600  # секунд (1 час)
+
     def handle_hh_sync(self) -> None:
         ui.timer(0.01, self._hh_sync_async, once=True)
+
+    def handle_autosync_toggle(self, e) -> None:
+        """Включает / выключает автосинхронизацию раз в час."""
+        enabled = bool(e.value)
+        self.config.set("autosync_enabled", enabled)
+
+        # Отменяем старый таймер если есть
+        old_timer = getattr(self, "_autosync_timer", None)
+        if old_timer is not None:
+            old_timer.cancel()
+            self._autosync_timer = None
+
+        if enabled:
+            # Сразу запускаем первую синхронизацию
+            ui.timer(0.01, self._hh_sync_async, once=True)
+            # Затем — каждый час
+            self._autosync_timer = ui.timer(
+                self._AUTOSYNC_INTERVAL, self._hh_sync_async, once=False
+            )
+            logging.info("[AutoSync] Включена авто-синхронизация (интервал 1 час)")
+            ui.notify(
+                "Авто-синхронизация включена. Первый запрос выполняется сейчас.",
+                type="positive", icon="sync", timeout=3000,
+            )
+        else:
+            logging.info("[AutoSync] Авто-синхронизация отключена")
+            ui.notify("Авто-синхронизация отключена.", type="info", timeout=2000)
+
+    def _restore_autosync_state(self) -> None:
+        """Восстанавливает состояние переключателя из конфига при старте."""
+        enabled = bool(self.config.get("autosync_enabled"))
+        if "toggle_autosync" in self.el:
+            self.el["toggle_autosync"].set_value(enabled)
+        if enabled:
+            self._autosync_timer = ui.timer(
+                self._AUTOSYNC_INTERVAL, self._hh_sync_async, once=False
+            )
+            logging.info("[AutoSync] Авто-синхронизация восстановлена из настроек")
 
     async def _hh_sync_async(self) -> None:
         btn = self.el["btn_hh_sync"]
