@@ -132,6 +132,83 @@ def normalize_markdown(text: str) -> str:
     return _MD_INLINE_HEADING.sub(r"\n\n\1", text)
 
 
+def vacancy_desc_to_html(text: str) -> str:
+    """Конвертирует описание вакансии (plain text с \\n) в структурированный HTML.
+
+    hh.ru хранит описания как простой текст с переносами строк:
+    - пустые строки между блоками → разделитель секций
+    - строки «Обязанности:», «Требования:» и т.п. → заголовки секций
+    - строки, начинающиеся с «-» или «•» → пункты списка
+    - прочие строки → обычные абзацы
+
+    Результат рендерится через ui.html() с классом vob-vacancy-desc.
+    """
+    if not text or not text.strip():
+        return ""
+    # Если уже HTML — отдать как есть (sanitize делается в controller)
+    if "<" in text and ("</p>" in text or "<li" in text or "<br" in text):
+        return text
+
+    import html as _html
+
+    # Заголовки секций: короткая строка (≤60 символов) без точки в конце,
+    # заканчивающаяся двоеточием ИЛИ являющаяся одним словом/фразой-заголовком.
+    _SECTION_RE = re.compile(r"^(.{1,60}):$")
+    # Маркеры пунктов списка
+    _BULLET_RE = re.compile(r"^[-•·–—]\s*(.+)")
+
+    lines = text.splitlines()
+    out: list[str] = []
+    in_ul = False
+
+    def _close_ul():
+        nonlocal in_ul
+        if in_ul:
+            out.append("</ul>")
+            in_ul = False
+
+    for raw in lines:
+        line = raw.strip()
+
+        # Пустая строка — завершает список, добавляет отступ между блоками
+        if not line:
+            _close_ul()
+            continue
+
+        # Заголовок секции: «Обязанности:», «Требования:» и т.п.
+        m_sec = _SECTION_RE.match(line)
+        if m_sec:
+            _close_ul()
+            out.append(f'<p class="vob-sec-header">{_html.escape(m_sec.group(1))}:</p>')
+            continue
+
+        # Пункт маркированного списка
+        m_bul = _BULLET_RE.match(line)
+        if m_bul:
+            if not in_ul:
+                out.append("<ul>")
+                in_ul = True
+            out.append(f"<li>{_html.escape(m_bul.group(1))}</li>")
+            continue
+
+        # Строка-перечисление без дефиса, но заканчивается «;» — тоже в список
+        if line.endswith(";") and not in_ul:
+            out.append("<ul>")
+            in_ul = True
+        if in_ul and not m_bul:
+            # продолжение списка (строки с «;» в конце)
+            item = line.rstrip(";").rstrip(",")
+            out.append(f"<li>{_html.escape(item)}</li>")
+            continue
+
+        # Обычный абзац
+        _close_ul()
+        out.append(f"<p>{_html.escape(line)}</p>")
+
+    _close_ul()
+    return "\n".join(out)
+
+
 def strip_html(html: str) -> str:
     """Грубо конвертирует HTML в читаемый плоский текст.
 

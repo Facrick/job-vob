@@ -303,6 +303,12 @@ def apply_theme() -> None:
   .vob-vacancy-desc h1 { font-size: 1.1rem; }
   .vob-vacancy-desc h2 { font-size: 1rem; }
   .vob-vacancy-desc h3 { font-size: .95rem; }
+  /* Заголовки секций вакансии: «Обязанности:», «Требования:» и т.п. */
+  .vob-vacancy-desc .vob-sec-header {
+    color: #e4e4e7; font-weight: 600; margin: .8em 0 .15em;
+    font-size: .88rem; text-transform: uppercase;
+    letter-spacing: .04em; opacity: .7;
+  }
   /* Убираем отступ первого и лишние пустые блоки */
   .vob-vacancy-desc > p:first-child { margin-top: 0; }
   .vob-vacancy-desc br + br { display: none; }

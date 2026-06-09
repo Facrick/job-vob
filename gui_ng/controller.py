@@ -32,7 +32,12 @@ from core.parser import HHParser
 from core.paths import user_path
 from core.search_service import SearchService
 from core.skill_heatmap import extract_top_skills
-from core.utils import extract_salary_from_resume, html_to_markdown, normalize_markdown
+from core.utils import (
+    extract_salary_from_resume,
+    html_to_markdown,
+    normalize_markdown,
+    vacancy_desc_to_html,
+)
 from gui_ng.theme import GRADE_HEX, STATUS_STYLE, match_color
 
 
@@ -258,7 +263,7 @@ class AppController:
         self.el["detail_skills"].set_text(v.get("skills") or "Не указаны")
         desc = v.get("description") or ""
         self.el["detail_description"].set_content(
-            _sanitize_hh_html(desc) if desc else "<em>Описание отсутствует.</em>"
+            vacancy_desc_to_html(desc) if desc else "<em>Описание отсутствует.</em>"
         )
         self.el["detail_analysis"].set_content(
             "_Нажмите «Анализ ИИ», чтобы получить разбор вакансии._"
