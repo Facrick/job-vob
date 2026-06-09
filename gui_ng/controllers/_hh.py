@@ -64,14 +64,16 @@ class _HHMixin:
         status_lbl = self.el["search_status"]
         progress   = self.el["search_progress"]
 
-        _SYNC_STATUSES = {"applied", "interview", "offer"}
+        # Проверяем все вакансии из CRM — пользователь мог откликнуться вручную
+        # прямо на hh.ru, и в CRM статус остался «discovered»/«processed».
+        # Исключаем только вакансии без id (не с hh.ru).
         candidates = [
             v for v in self.repo.get_vacancies_filtered("all")
-            if v.get("status") in _SYNC_STATUSES
+            if v.get("id")
         ]
         if not candidates:
             ui.notify(
-                "Нет вакансий для проверки. Сначала отправьте отклики.",
+                "В CRM нет вакансий для проверки.",
                 type="info",
             )
             btn.enable()
