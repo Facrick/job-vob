@@ -187,11 +187,32 @@ class _LettersMixin:
         except Exception as ex:
             self._show_error(f"Не удалось открыть браузер: {ex}")
 
+    _STATUS_LABEL = {
+        "discovered": ("Новая",              "info"),
+        "processed":  ("Письмо готово",      "info"),
+        "applied":    ("Отклик отправлен",   "positive"),
+        "interview":  ("Собеседование",      "positive"),
+        "offer":      ("Оффер! 🎉",          "positive"),
+        "rejected":   ("Отказ",              "warning"),
+    }
+
     def handle_status_change(self, e):
         if self._suppress_status_change or not self.selected_vacancy_id:
             return
-        self.repo.update_status(self.selected_vacancy_id, e.value)
-        logging.info(f"Вакансия {self.selected_vacancy_id}: этап → {e.value}")
+        new_status = e.value
+        self.repo.update_status(self.selected_vacancy_id, new_status)
+        logging.info(f"Вакансия {self.selected_vacancy_id}: этап → {new_status}")
+
+        v = self.repo.get_vacancy_by_id(self.selected_vacancy_id)
+        vac_name = v.get("title", "") if v else ""
+        label, ntype = self._STATUS_LABEL.get(new_status, (new_status, "info"))
+        ui.notify(
+            f"{vac_name}: статус → «{label}»" if vac_name else f"Статус → «{label}»",
+            type=ntype,
+            icon="flag",
+            timeout=3000,
+        )
+
         self.refresh_table_data()
 
     def handle_notes_save(self):
