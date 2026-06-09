@@ -34,6 +34,8 @@ class VacancyRepository:
                 cursor.execute("ALTER TABLE vacancies ADD COLUMN contacts TEXT")
             if "interview_date" not in columns:
                 cursor.execute("ALTER TABLE vacancies ADD COLUMN interview_date TEXT")
+            if "created_at" not in columns:
+                cursor.execute("ALTER TABLE vacancies ADD COLUMN created_at TEXT")
 
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS cover_letters (
@@ -84,21 +86,26 @@ class VacancyRepository:
             conn.commit()
 
     def save_vacancies(self, vacancies: list[dict]):
+        from datetime import datetime
+        now = datetime.now().isoformat(timespec="seconds")
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             for v in vacancies:
                 cursor.execute("""
                     INSERT INTO vacancies
-                        (id, title, company, salary_min, salary_max, description, skills, status, match_score)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (id, title, company, salary_min, salary_max, description, skills,
+                         status, match_score, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
-                        title=excluded.title, company=excluded.company, salary_min=excluded.salary_min,
-                        salary_max=excluded.salary_max, description=excluded.description,
-                        skills=excluded.skills, match_score=excluded.match_score
+                        title=excluded.title, company=excluded.company,
+                        salary_min=excluded.salary_min, salary_max=excluded.salary_max,
+                        description=excluded.description, skills=excluded.skills,
+                        match_score=excluded.match_score
                 """, (
                     v["id"], v.get("title"), v.get("company"), v.get("salary_min"),
                     v.get("salary_max"), v.get("description"), v.get("skills"),
                     v.get("status", VacancyStatus.DISCOVERED.value), v.get("match_score"),
+                    now,
                 ))
             conn.commit()
 
@@ -180,6 +187,31 @@ class VacancyRepository:
                 (vacancy_id, vacancy_id, self._MAX_LETTER_VERSIONS),
             )
             conn.commit()
+
+    def get_activity_by_date(self, days: int = 30) -> list[dict]:
+        """Активность по дням: сколько вакансий добавлено за последние N дней.
+
+        Возвращает список {"date": "YYYY-MM-DD", "total": N, "applied": N,
+        "interview": N, "offer": N} отсортированный от старых к новым.
+        Вакансии без created_at исключаются.
+        """
+        with sqlite3.connect(self.db_path) as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT
+                    SUBSTR(created_at, 1, 10)   AS date,
+                    COUNT(*)                     AS total,
+                    SUM(status = 'applied')      AS applied,
+                    SUM(status = 'interview')    AS interview,
+                    SUM(status = 'offer')        AS offer
+                FROM vacancies
+                WHERE created_at IS NOT NULL
+                  AND DATE(created_at) >= DATE('now', ? || ' days')
+                GROUP BY SUBSTR(created_at, 1, 10)
+                ORDER BY date ASC
+            """, (f"-{days}",))
+            return [dict(row) for row in cursor.fetchall()]
 
     def get_letter_history(self, vacancy_id: str) -> list[dict]:
         """Возвращает историю версий письма (новые первыми), до _MAX_LETTER_VERSIONS."""

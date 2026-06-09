@@ -94,6 +94,27 @@ def test_letter_history_empty_for_new_vacancy(repo):
     assert repo.get_letter_history("5") == []
 
 
+def test_activity_by_date_today(repo):
+    """Вакансии, добавленные сейчас, видны в timeline за последние 30 дней."""
+    repo.save_vacancies([_vacancy("1"), _vacancy("2"), _vacancy("3", status="applied")])
+    rows = repo.get_activity_by_date(days=30)
+    assert len(rows) == 1
+    assert rows[0]["total"] == 3
+    assert (rows[0]["applied"] or 0) == 1
+
+
+def test_activity_by_date_no_created_at(repo):
+    """Вакансии без created_at не попадают в timeline."""
+    import sqlite3
+    repo.save_vacancies([_vacancy("1")])
+    # Сбрасываем created_at вручную
+    with sqlite3.connect(repo.db_path) as conn:
+        conn.execute("UPDATE vacancies SET created_at = NULL")
+        conn.commit()
+    rows = repo.get_activity_by_date(days=30)
+    assert rows == []
+
+
 def test_mock_interview_roundtrip(repo):
     history = [{"role": "assistant", "content": "вопрос"},
                {"role": "user", "content": "ответ"}]

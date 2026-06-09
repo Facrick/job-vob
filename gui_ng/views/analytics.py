@@ -12,6 +12,23 @@ def build_analytics_tab(c):
                 ui.icon("filter_alt", color="primary")
                 ui.label("Воронка поиска работы").classes("text-base font-semibold")
             el["funnel_box"] = ui.column().classes("w-full gap-3")
+        with _card():
+            with ui.row().classes("w-full items-center gap-2"):
+                ui.icon("timeline", color="primary")
+                ui.label("Timeline активности").classes("text-base font-semibold")
+                ui.space()
+                el["combo_timeline_period"] = ui.select(
+                    {"14": "14 дней", "30": "30 дней", "60": "60 дней", "90": "90 дней"},
+                    value="30", label="Период",
+                ).props("dense outlined").style("width:110px")
+                ui.button(
+                    "Построить", icon="timeline", on_click=c.draw_timeline
+                ).props("no-caps")
+            el["timeline_box"] = ui.column().classes("w-full gap-1")
+            with el["timeline_box"]:
+                ui.label(
+                    "Нажмите «Построить», чтобы увидеть активность по дням."
+                ).classes("italic vob-muted text-sm")
         with _split(50) as sp:
             with sp.before:
                 with _card("h-full"):

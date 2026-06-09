@@ -106,5 +106,62 @@ class _AnalyticsMixin:
                         )
                     ui.linear_progress(value=ratio, show_value=False).props("color=primary")
 
+    def draw_timeline(self):
+        """Рисует timeline активности: добавлено вакансий по дням за последние 30 дней."""
+        period = int(self.el["combo_timeline_period"].value or 30)
+        rows = self.repo.get_activity_by_date(days=period)
+        box = self.el["timeline_box"]
+        box.clear()
+        with box:
+            if not rows:
+                ui.label(
+                    "Нет данных. Вакансии, добавленные до этого обновления, "
+                    "не имеют метки даты. Новые вакансии будут отображаться здесь."
+                ).classes("italic vob-muted text-sm")
+                return
+
+            max_total = max((r["total"] for r in rows), default=0) or 1
+
+            with ui.column().classes("w-full gap-1"):
+                for row in rows:
+                    date_str = row["date"]
+                    total    = row["total"]
+                    applied  = row.get("applied") or 0
+                    interview = row.get("interview") or 0
+                    offer    = row.get("offer") or 0
+
+                    ratio = total / max_total
+                    with ui.row().classes("items-center gap-2 w-full no-wrap"):
+                        ui.label(date_str).classes("text-xs vob-muted").style(
+                            "flex:0 0 90px;font-family:monospace"
+                        )
+                        with ui.element("div").classes("flex-grow").style(
+                            "background:#ffffff0d;border-radius:4px;height:18px;min-width:0"
+                        ):
+                            ui.element("div").style(
+                                f"height:18px;border-radius:4px;"
+                                f"background:linear-gradient(90deg,#60a5fa,#a78bfa);"
+                                f"width:{max(2, ratio * 100):.1f}%"
+                            )
+                        ui.label(str(total)).classes("text-xs font-bold").style(
+                            "color:#e4e4e7;flex:0 0 28px;text-align:right"
+                        )
+                        # Значки статусов если есть
+                        if applied:
+                            ui.badge(f"↑{applied}").style(
+                                "background:#ff8f0033;color:#ff8f00;"
+                                "border:1px solid #ff8f0055;font-size:10px"
+                            ).tooltip(f"Откликов: {applied}")
+                        if interview:
+                            ui.badge(f"✔{interview}").style(
+                                "background:#ab47bc33;color:#ab47bc;"
+                                "border:1px solid #ab47bc55;font-size:10px"
+                            ).tooltip(f"Собеседований: {interview}")
+                        if offer:
+                            ui.badge(f"★{offer}").style(
+                                "background:#66bb6a33;color:#66bb6a;"
+                                "border:1px solid #66bb6a55;font-size:10px"
+                            ).tooltip(f"Офферов: {offer}")
+
     def handle_clear_logs(self):
         self.el["logs"].clear()
