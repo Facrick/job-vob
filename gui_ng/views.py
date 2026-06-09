@@ -69,6 +69,12 @@ def build_scout_tab(c):
                     ).props("dense outlined").classes("flex-grow").on(
                         "keydown.enter", c.handle_search
                     )
+                    el["toggle_expand"] = ui.checkbox(
+                        "Расширенный", value=False,
+                    ).tooltip(
+                        "Искать также по синонимам: тестировщик, AQA, SDET, "
+                        "инженер по тестированию и др."
+                    ).classes("text-sm no-wrap").style("color:#a1a1aa")
                     el["btn_search"] = ui.button(
                         "Найти", icon="search", on_click=c.handle_search
                     ).props("no-caps")

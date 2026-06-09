@@ -384,6 +384,7 @@ class AppController:
         area = self.el["combo_area"].value or "113"
         sched_val = self.el["combo_schedule"].value
         schedule = sched_val if sched_val is not None else ""
+        expand = bool(self.el["toggle_expand"].value)
 
         progress = self.el["search_progress"]
         status = self.el["search_status"]
@@ -414,7 +415,8 @@ class AppController:
             self.repo.clear_discovered_vacancies()
             self._cached_resume = self._safe_resume_text()
             SearchService().search(
-                text=keyword, period=int(period), area=int(area), experience=exp,
+                text=keyword, expand=expand,
+                period=int(period), area=int(area), experience=exp,
                 schedule=schedule, page_limit=3,
                 progress_callback=on_progress, on_vacancy=on_vacancy,
             )
