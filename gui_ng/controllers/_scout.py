@@ -166,10 +166,11 @@ class _ScoutMixin:
         """Список id строк, отмеченных чекбоксами в таблице."""
         return [row["id"] for row in (self.el["table"].selected or [])]
 
-    def handle_bulk_selection_change(self, e) -> None:
-        """Вызывается при изменении выделения в таблице."""
-        selected = e.args if isinstance(e.args, list) else []
-        count = len(selected)
+    def handle_bulk_selection_change(self, e=None) -> None:
+        """Вызывается при изменении выделения в таблице.
+        Читает table.selected напрямую — не зависит от формата e.args.
+        """
+        count = len(self.el["table"].selected or [])
         bar = self.el["bulk_bar"]
         if count:
             self.el["bulk_count_label"].set_text(f"Выбрано: {count}")
@@ -178,7 +179,7 @@ class _ScoutMixin:
             bar.set_visibility(False)
 
     def handle_bulk_deselect(self) -> None:
-        self.el["table"].selected = []
+        self.el["table"].selected.clear()
         self.el["table"].update()
         self.el["bulk_bar"].set_visibility(False)
 

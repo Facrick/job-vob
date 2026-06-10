@@ -155,11 +155,11 @@ def build_scout_tab(c):
                         {"name": "status", "label": "Статус", "field": "status_num",
                          "align": "center", "sortable": True, "headerStyle": "width:96px"},
                     ]
-                    table = ui.table(columns=columns, rows=[], row_key="id").classes(
-                        "w-full h-full vob-table"
-                    )
-                    table.props("flat dense :rows-per-page-options=[0] selection=multiple")
-                    table.on("update:selected", c.handle_bulk_selection_change)
+                    table = ui.table(
+                        columns=columns, rows=[], row_key="id",
+                        selection="multiple", on_select=c.handle_bulk_selection_change,
+                    ).classes("w-full h-full vob-table")
+                    table.props("flat dense :rows-per-page-options=[0]")
                     table.add_slot("body-cell-match", """
                         <q-td :props="props">
                           <q-badge :style="'background:'+props.row.match_color+'40'+';color:#fff;border:1px solid '+props.row.match_color+';font-weight:700;min-width:38px;text-align:center'">{{ props.row.match }}</q-badge>
