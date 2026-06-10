@@ -88,3 +88,41 @@ def test_no_false_positive_from_description():
     )
     assert result["title"] == "QA Engineer"
     assert result["company"] == "ООО Тест"
+
+
+APPLIED_HTML = """
+<html><body>
+  <h1 data-qa="vacancy-title">QA Engineer</h1>
+  <div data-qa="vacancy-company-name">Яндекс</div>
+  <div data-qa="vacancy-response-status">Ваш отклик рассматривается</div>
+  <div class="vacancy-description">
+    Обязанности: тестировать продукты. Требования: опыт от 2 лет.
+  </div>
+</body></html>
+"""
+
+def test_detects_applied_status_via_data_qa():
+    """data-qa=vacancy-response-status должен распознаваться как APPLIED."""
+    parser = _make_parser()
+    result = parser._check_vacancy_response_html(APPLIED_HTML, "99999")
+    assert result["hh_status"] != "", "Статус не определён для вакансии с откликом"
+    assert map_hh_status(result["hh_status"]) == VacancyStatus.APPLIED
+
+
+# ── sync_negotiations: понижение статуса теперь разрешено ────────────────────
+
+def test_sync_allows_status_downgrade(tmp_path):
+    """Если hh.ru показывает более низкий статус — CRM обновляется.
+    Вакансия может переоткрыться, отклик сброситься."""
+    repo = VacancyRepository(db_path=str(tmp_path / "test.db"))
+    repo.save_vacancies([{
+        "id": "100", "title": "Dev", "company": "Co",
+        "status": "interview",  # был interview
+    }])
+    # hh.ru теперь показывает только applied
+    negotiations = [{"vacancy_id": "100", "hh_status": "ваш отклик рассматривается",
+                     "title": "Dev", "company": "Co"}]
+    result = sync_negotiations(repo, negotiations)
+    assert len(result.updated) == 1
+    assert result.updated[0]["new"] == "applied"
+    assert repo.get_vacancy_by_id("100")["status"] == "applied"

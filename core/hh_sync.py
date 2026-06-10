@@ -44,17 +44,6 @@ _HH_KEYWORDS: list[tuple[str, VacancyStatus]] = [
     ("viewed",                   VacancyStatus.APPLIED),
 ]
 
-# Приоритет: не даунгрейдить статус на «менее важный».
-# Исключение: REJECTED всегда перезаписывает (работодатель отказал — факт).
-_PRIORITY: dict[str, int] = {
-    VacancyStatus.DISCOVERED: 0,
-    VacancyStatus.PROCESSED:  1,
-    VacancyStatus.APPLIED:    2,
-    VacancyStatus.INTERVIEW:  3,
-    VacancyStatus.OFFER:      4,
-    VacancyStatus.REJECTED:   5,  # финальный статус, высший приоритет
-}
-
 
 def map_hh_status(hh_status_text: str) -> VacancyStatus | None:
     """Маппит текст статуса hh.ru на наш VacancyStatus.
@@ -74,14 +63,13 @@ class SyncResult:
     def __init__(self):
         self.updated:      list[dict] = []   # {vacancy_id, title, company, old, new}
         self.skipped_same: int = 0            # статус уже актуален
-        self.skipped_lower: int = 0           # hh.ru даёт менее важный статус
         self.not_in_crm:   int = 0            # вакансия есть на hh.ru но не в CRM
         self.unrecognized: list[str] = []     # тексты статусов, которые не распознали
 
     @property
     def total_negotiations(self) -> int:
         return (len(self.updated) + self.skipped_same +
-                self.skipped_lower + self.not_in_crm + len(self.unrecognized))
+                self.not_in_crm + len(self.unrecognized))
 
     def summary_lines(self) -> list[str]:
         lines = [f"Переговоров на hh.ru: {self.total_negotiations}"]
@@ -89,8 +77,6 @@ class SyncResult:
             lines.append(f"Обновлено статусов: {len(self.updated)}")
         if self.skipped_same:
             lines.append(f"Уже актуальны: {self.skipped_same}")
-        if self.skipped_lower:
-            lines.append(f"Пропущено (hh.ru ниже CRM): {self.skipped_lower}")
         if self.not_in_crm:
             lines.append(f"Нет в CRM (ещё не добавлены): {self.not_in_crm}")
         if self.unrecognized:
@@ -126,21 +112,12 @@ def sync_negotiations(repo, negotiations: list[dict]) -> SyncResult:
 
         current = vacancy.get("status") or VacancyStatus.DISCOVERED
 
-        # REJECTED обновляем всегда; иначе — только если новый статус приоритетнее
-        current_prio = _PRIORITY.get(str(current), 0)
-        new_prio     = _PRIORITY.get(str(new_status), 0)
-
         if str(current) == str(new_status):
             result.skipped_same += 1
             continue
 
-        if new_status != VacancyStatus.REJECTED and new_prio <= current_prio:
-            result.skipped_lower += 1
-            logging.debug(
-                f"[Sync] {vid} — пропуск: hh.ru «{hh_text}» ({new_status}) "
-                f"≤ текущий «{current}»"
-            )
-            continue
+        # Статус hh.ru всегда актуальнее — обновляем без ограничений.
+        # Вакансия может переоткрыться, отклик сброситься — статус должен отражать реальность.
 
         repo.update_status(vid, new_status)
         logging.info(

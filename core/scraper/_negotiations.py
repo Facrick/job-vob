@@ -10,21 +10,27 @@ from bs4 import BeautifulSoup
 class _NegotiationsMixin:
     """Методы проверки статусов откликов по прямым ссылкам на вакансии."""
 
-    # Ключевые слова для определения статуса из ЗОНЫ КНОПКИ ОТКЛИКА.
-    # Намеренно исключены общие слова («собеседование», «интервью»),
-    # которые hh.ru использует в описаниях вакансий — они дают ложные срабатывания.
-    # Здесь только фразы, характерные именно для блока статуса отклика на hh.ru.
+    # Ключевые слова для определения статуса.
+    # Порядок важен: более специфичные — первыми.
+    # Одиночные «собеседование» / «интервью» убраны — встречаются в описаниях вакансий.
     _RESP_STATUS_KEYWORDS = [
         # Оффер
-        "оффер", "предложение о работе",
-        # Приглашение (точные фразы статуса, не "приглашаем на работу")
-        "приглашение на интервью", "вас пригласили", "приглашён",
+        "оффер", "предложение о работе", "job offer",
+        # Приглашение — точные фразы статуса
+        "приглашение на интервью", "вас пригласили", "приглашён", "приглашен на",
         "телефонное интервью",
         # Отказ
-        "отказ", "отклонен", "не подошл",
-        # Отклик/просмотр — только в контексте статуса
+        "отказ", "отклонен", "не подош",
+        # Отклик / просмотр — статусные формулировки
         "ваш отклик", "вы уже откликнулись", "отклик рассматривается",
         "отклик просмотрен", "отклик отправлен", "просмотрен работодателем",
+        "отклик на рассмотрении",
+    ]
+
+    # Разделители начала описания вакансии — всё ДО них считается «шапкой» (apply-зоной)
+    _DESC_MARKERS = [
+        "обязанности", "требования", "условия работы", "о компании",
+        "что мы предлагаем", "чем предстоит заниматься",
     ]
 
     def fetch_negotiations(
@@ -133,16 +139,16 @@ class _NegotiationsMixin:
             return {"vacancy_id": vacancy_id, "hh_status": "закрыта",
                     "title": title, "company": company}
 
-        # Ищем зону статуса отклика — только в специальных элементах, НЕ по всей странице.
-        # Поиск по всему тексту страницы намеренно исключён: описания вакансий
-        # содержат слова «собеседование», «интервью», «приглашение» как часть описания
-        # процесса найма, что даёт ложные срабатывания для вакансий без отклика.
+        # ── Поиск статуса отклика ────────────────────────────────────────────
+        # Ищем ТОЛЬКО в специальных зонах — НЕ по всей странице,
+        # чтобы не подхватить ключевые слова из описания вакансии.
         status_text = ""
 
-        # 1. Целевые data-qa элементы статуса отклика (самый точный способ)
+        # 1. Целевые data-qa элементы статуса (самый точный способ)
         for dqa in [
             "vacancy-response-status", "response-status",
             "negotiations-status", "negotiation-status",
+            "applicant-status", "vacancy-applicant-status",
         ]:
             tag = soup.find(attrs={"data-qa": re.compile(dqa, re.I)})
             if tag:
@@ -150,8 +156,19 @@ class _NegotiationsMixin:
                 if status_text:
                     break
 
-        # 2. Только прямой родитель кнопки «Откликнуться» — не выше.
-        # Поднимаемся максимум на 1 уровень вверх, чтобы не захватить описание.
+        # 2. CSS-классы контейнеров статуса отклика
+        if not status_text:
+            for cls_pat in [
+                re.compile(r"response.?status|negotiation.?status|applicant.?status", re.I),
+                re.compile(r"vacancy.?response.?block|apply.?status", re.I),
+            ]:
+                tag = soup.find(attrs={"class": cls_pat})
+                if tag:
+                    status_text = tag.get_text(strip=True).lower()
+                    if status_text:
+                        break
+
+        # 3. Поднимаемся до 3 уровней вверх от кнопки отклика
         if not status_text:
             for dqa in [
                 "vacancy-response-link-top", "vacancy-response-link-bottom",
@@ -160,15 +177,37 @@ class _NegotiationsMixin:
                 zone = soup.find(attrs={"data-qa": re.compile(dqa, re.I)})
                 if not zone:
                     continue
-                # Берём только непосредственного родителя (не grandparent)
-                parent = zone.parent
-                zone_text = parent.get_text(" ", strip=True).lower() if parent else ""
-                for keyword in self._RESP_STATUS_KEYWORDS:
-                    if keyword in zone_text:
-                        status_text = keyword
+                node = zone
+                for _ in range(3):
+                    node = node.parent
+                    if node is None:
+                        break
+                    zone_text = node.get_text(" ", strip=True).lower()
+                    for keyword in self._RESP_STATUS_KEYWORDS:
+                        if keyword in zone_text:
+                            status_text = keyword
+                            break
+                    if status_text:
                         break
                 if status_text:
                     break
+
+        # 4. «Шапка страницы» — текст ДО первого маркера описания вакансии.
+        # Статус отклика всегда расположен в шапке (company/title/apply-зона),
+        # до текста с «обязанности», «требования» и т.п.
+        if not status_text:
+            header_zone = page_text
+            for marker in self._DESC_MARKERS:
+                idx = page_text.find(marker)
+                if idx != -1:
+                    header_zone = page_text[:idx]
+                    break
+            # Ищем только если шапка разумного размера (не весь текст страницы)
+            if len(header_zone) < len(page_text) * 0.6:
+                for keyword in self._RESP_STATUS_KEYWORDS:
+                    if keyword in header_zone:
+                        status_text = keyword
+                        break
 
         return {
             "vacancy_id": vacancy_id,
