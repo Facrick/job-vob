@@ -61,8 +61,14 @@ class _HHMixin:
         ui.timer(0.01, self._hh_sync_async, once=True)
 
     def handle_autosync_toggle(self, e) -> None:
-        """Включает / выключает автосинхронизацию раз в час."""
-        enabled = bool(e.value)
+        """Включает / выключает автосинхронизацию раз в час (вызов пользователем)."""
+        if getattr(self, "_autosync_restoring", False):
+            # Вызов из _restore_autosync_state — игнорируем, таймер уже создан там
+            return
+        self._set_autosync(bool(e.value), run_now=True)
+
+    def _set_autosync(self, enabled: bool, *, run_now: bool = False) -> None:
+        """Единственная точка управления таймером авто-синхронизации."""
         self.config.set("autosync_enabled", enabled)
 
         # Отменяем старый таймер если есть
@@ -72,31 +78,38 @@ class _HHMixin:
             self._autosync_timer = None
 
         if enabled:
-            # Сразу запускаем первую синхронизацию
-            ui.timer(0.01, self._hh_sync_async, once=True)
-            # Затем — каждый час
+            if run_now:
+                # Немедленный синк только при явном включении пользователем
+                ui.timer(0.01, self._hh_sync_async, once=True)
             self._autosync_timer = ui.timer(
                 self._AUTOSYNC_INTERVAL, self._hh_sync_async, once=False
             )
-            logging.info("[AutoSync] Включена авто-синхронизация (интервал 1 час)")
-            ui.notify(
-                "Авто-синхронизация включена. Первый запрос выполняется сейчас.",
-                type="positive", icon="sync", timeout=3000,
+            logging.info(
+                f"[AutoSync] Включена (интервал {self._AUTOSYNC_INTERVAL}s"
+                f"{', немедленный запуск' if run_now else ', без немедленного запуска'})"
             )
+            if run_now:
+                ui.notify(
+                    "Авто-синхронизация включена. Первый запрос выполняется сейчас.",
+                    type="positive", icon="sync", timeout=3000,
+                )
         else:
-            logging.info("[AutoSync] Авто-синхронизация отключена")
-            ui.notify("Авто-синхронизация отключена.", type="info", timeout=2000)
+            logging.info("[AutoSync] Отключена")
+            if run_now:
+                ui.notify("Авто-синхронизация отключена.", type="info", timeout=2000)
 
     def _restore_autosync_state(self) -> None:
-        """Восстанавливает состояние переключателя из конфига при старте."""
+        """Восстанавливает таймер из конфига при старте. НЕ запускает немедленный синк."""
         enabled = bool(self.config.get("autosync_enabled"))
         if "toggle_autosync" in self.el:
+            # Выставляем значение переключателя без срабатывания on_change
+            self._autosync_restoring = True
             self.el["toggle_autosync"].set_value(enabled)
+            self._autosync_restoring = False
         if enabled:
-            self._autosync_timer = ui.timer(
-                self._AUTOSYNC_INTERVAL, self._hh_sync_async, once=False
-            )
-            logging.info("[AutoSync] Авто-синхронизация восстановлена из настроек")
+            # run_now=False — при старте не нужен немедленный синк
+            self._set_autosync(enabled, run_now=False)
+            logging.info("[AutoSync] Восстановлена из настроек")
 
     async def _hh_sync_async(self) -> None:
         btn = self.el["btn_hh_sync"]
