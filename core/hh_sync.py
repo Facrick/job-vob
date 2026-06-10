@@ -18,26 +18,30 @@ from core.models import VacancyStatus
 # Порядок важен: более специфичные строки — первыми.
 _HH_KEYWORDS: list[tuple[str, VacancyStatus]] = [
     # Отказ
-    ("отказ",           VacancyStatus.REJECTED),
-    ("отклонен",        VacancyStatus.REJECTED),
-    ("не подошл",       VacancyStatus.REJECTED),
+    ("отказ",                    VacancyStatus.REJECTED),
+    ("отклонен",                 VacancyStatus.REJECTED),
+    ("не подош",                 VacancyStatus.REJECTED),   # матчит "не подошел/ёл/ли"
     # Оффер
-    ("оффер",           VacancyStatus.OFFER),
-    ("предложение о работе", VacancyStatus.OFFER),
-    ("job offer",       VacancyStatus.OFFER),
-    # Собеседование / приглашение
-    ("приглашение",     VacancyStatus.INTERVIEW),
-    ("приглашен",       VacancyStatus.INTERVIEW),
-    ("телефонное",      VacancyStatus.INTERVIEW),
-    ("интервью",        VacancyStatus.INTERVIEW),
-    ("собеседование",   VacancyStatus.INTERVIEW),
-    ("interview",       VacancyStatus.INTERVIEW),
-    # Отклик отправлен / ожидает / просмотрено — всё это APPLIED
-    ("отклик",          VacancyStatus.APPLIED),
-    ("ожидает",         VacancyStatus.APPLIED),
-    ("просмотрен",      VacancyStatus.APPLIED),
-    ("viewed",          VacancyStatus.APPLIED),
-    ("response sent",   VacancyStatus.APPLIED),
+    ("оффер",                    VacancyStatus.OFFER),
+    ("предложение о работе",     VacancyStatus.OFFER),
+    ("job offer",                VacancyStatus.OFFER),
+    # Собеседование / приглашение — только точные статусные фразы.
+    # Одиночные «интервью» / «собеседование» убраны: они встречаются в описаниях
+    # вакансий и дают ложные срабатывания для неоткликнутых вакансий.
+    # ВАЖНО: «приглашен» убран — это подстрока слова «приглашение».
+    ("приглашение на интервью",  VacancyStatus.INTERVIEW),
+    ("вас пригласили",           VacancyStatus.INTERVIEW),
+    ("приглашён",                VacancyStatus.INTERVIEW),  # ё-версия, не подстрока
+    ("телефонное интервью",      VacancyStatus.INTERVIEW),
+    # Отклик отправлен / просмотрен — только статусные формулировки
+    ("ваш отклик",               VacancyStatus.APPLIED),
+    ("вы уже откликнулись",      VacancyStatus.APPLIED),
+    ("отклик рассматривается",   VacancyStatus.APPLIED),
+    ("отклик просмотрен",        VacancyStatus.APPLIED),
+    ("отклик отправлен",         VacancyStatus.APPLIED),
+    ("просмотрен работодателем", VacancyStatus.APPLIED),
+    ("response sent",            VacancyStatus.APPLIED),
+    ("viewed",                   VacancyStatus.APPLIED),
 ]
 
 # Приоритет: не даунгрейдить статус на «менее важный».
