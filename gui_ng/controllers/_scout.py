@@ -51,6 +51,7 @@ class _ScoutMixin:
         self.el["table"].update()
         self._update_funnel_counters()
         self._render_funnel()
+        self.refresh_letter_vacancy_select()
 
     def _filter_crm_rows(self, rows: list[dict]) -> list[dict]:
         """Фильтрует строки таблицы по тексту из поля crm_search."""
@@ -80,19 +81,22 @@ class _ScoutMixin:
         counts: dict[str, int] = {}
         for v in all_vac:
             counts[v.get("status", "")] = counts.get(v.get("status", ""), 0) + 1
-        box = self.el.get("funnel_counters")
-        if box is None:
+
+        metrics = self.el.get("funnel_metrics")
+        if not metrics:
             return
-        box.clear()
-        with box:
-            ui.label(f"Всего: {len(all_vac)}").classes("font-bold text-sm")
-            for key, (label, color) in STATUS_STYLE.items():
-                n = counts.get(key, 0)
-                if n:
-                    ui.badge(f"{label}: {n}").style(
-                        f"background-color:{color}33;color:#fff;"
-                        f"border:1px solid {color}66;font-weight:600"
-                    )
+        active = sum(counts.get(k, 0) for k in ("processed", "applied", "interview"))
+        values = {
+            "total":     len(all_vac),
+            "new":       counts.get("discovered", 0),
+            "active":    active,
+            "interview": counts.get("interview", 0),
+            "offer":     counts.get("offer", 0),
+        }
+        for key, label in values.items():
+            lbl = metrics.get(key)
+            if lbl is not None:
+                lbl.set_text(str(label))
 
     def on_row_click(self, e):
         try:

@@ -7,16 +7,37 @@ from gui_ng.views._shared import _card, _split
 def build_letters_tab(c):
     el = c.el
     with ui.column().classes("w-full h-full no-wrap gap-3"):
+        # ── Панель выбора вакансии ────────────────────────────────────────────
+        with _card():
+            with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                ui.icon("work_outline", color="primary")
+                ui.label("Вакансия:").classes("text-sm font-semibold").style(
+                    "white-space:nowrap"
+                )
+                el["letter_vacancy_select"] = ui.select(
+                    options={}, label="Выберите вакансию…",
+                    on_change=c.handle_letter_vacancy_select,
+                ).props("dense outlined use-input input-debounce=300 clearable").classes(
+                    "flex-grow"
+                )
+                # скрытый лейбл — нужен контроллеру для синхронизации с CRM
+                el["letter_vacancy_label"] = ui.label("").classes(
+                    "text-xs vob-muted"
+                ).style("display:none")
+                el["letter_progress"] = ui.linear_progress(
+                    show_value=False,
+                ).props("color=primary indeterminate").classes("w-32")
+                el["letter_progress"].set_visibility(False)
+                el["letter_status"] = ui.label("").classes("text-xs vob-muted")
+                el["letter_status"].set_visibility(False)
+
+        # ── Основная область: письмо + рекомендации ───────────────────────────
         with _split(60) as sp:
             with sp.before:
                 with _card("h-full"):
                     with ui.row().classes("w-full items-center gap-2"):
                         ui.icon("description", color="primary")
                         ui.label("Текст письма").classes("text-base font-semibold")
-                        ui.space()
-                        el["letter_vacancy_label"] = ui.label(
-                            "Вакансия не выбрана — выберите её в CRM"
-                        ).classes("text-sm vob-muted italic")
                     el["text_letter"] = ui.textarea(
                         placeholder="Сопроводительное письмо появится здесь после генерации…"
                     ).props("outlined").classes("w-full flex-grow vob-fill")
@@ -28,6 +49,8 @@ def build_letters_tab(c):
                     el["text_recs"] = ui.textarea(
                         placeholder="Рекомендации ИИ появятся здесь после генерации…"
                     ).props("outlined readonly").classes("w-full flex-grow vob-fill")
+
+        # ── Панель действий ───────────────────────────────────────────────────
         with _card():
             with ui.row().classes("w-full items-center gap-2 no-wrap"):
                 el["input_feedback"] = ui.input(

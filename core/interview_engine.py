@@ -3,9 +3,8 @@ import logging
 import os
 import time
 
-from groq import Groq
-
 from core.config import AppConfig
+from core.groq_client import make_groq_client
 
 
 class MockInterviewEngine:
@@ -14,7 +13,7 @@ class MockInterviewEngine:
         self.api_key = os.getenv("GROQ_API_KEY")
         if not self.api_key:
             raise ValueError("GROQ_API_KEY не найден в .env")
-        self.client = Groq(api_key=self.api_key)
+        self.client = make_groq_client(self.api_key)
         self.model = self.config.get("llm_model")
         self.fallback_model = self.config.get("llm_fallback_model")
         self.analysis_model = self.config.get("llm_analysis_model")
@@ -132,12 +131,45 @@ class MockInterviewEngine:
         },
     }
 
+    # ── Уровни сложности ──────────────────────────────────────────────
+    _LEVELS: dict[str, dict] = {
+        "junior": {
+            "label": "Junior",
+            "note": ("Уровень кандидата — JUNIOR. Вопросы — базовые и средние: "
+                     "основы, определения, простые практические кейсы. Тон поддерживающий."),
+        },
+        "middle": {
+            "label": "Middle",
+            "note": ("Уровень кандидата — MIDDLE. Вопросы средней сложности с "
+                     "практическими сценариями, проверяй самостоятельность и опыт."),
+        },
+        "senior": {
+            "label": "Senior",
+            "note": ("Уровень кандидата — SENIOR. Вопросы сложные: архитектура, "
+                     "trade-offs, нетривиальные кейсы, обоснование решений. Копай вглубь."),
+        },
+    }
+
     @classmethod
     def get_interview_system_prompt(
-        cls, fmt: str, company: str, title: str, description: str
+        cls, fmt: str, company: str, title: str, description: str,
+        level: str = "middle", resume_text: str = "",
     ) -> str:
         tpl = cls._INTERVIEW_FORMATS.get(fmt, cls._INTERVIEW_FORMATS["tech"])["system"]
-        return tpl.format(company=company, title=title, description=description[:2000])
+        prompt = tpl.format(company=company, title=title, description=description[:2000])
+
+        level_note = cls._LEVELS.get(level, cls._LEVELS["middle"])["note"]
+        prompt += f"\n\n{level_note}"
+
+        if resume_text and resume_text.strip():
+            prompt += (
+                "\n\nРЕЗЮМЕ КАНДИДАТА (фрагмент):\n"
+                f"{resume_text.strip()[:1800]}\n\n"
+                "Задавай ЧАСТЬ вопросов по реальному опыту и стеку из резюме: "
+                "проси раскрыть заявленные проекты/навыки, проверяй их подлинность и "
+                "нащупывай пробелы относительно требований вакансии."
+            )
+        return prompt
 
     def generate_mock_reply(self, messages_history: list[dict[str, str]]) -> str:
         try:
@@ -148,6 +180,91 @@ class MockInterviewEngine:
         except Exception as e:
             logging.error(f"Ошибка в mock-интервью: {e}")
             return "Извините, произошла техническая ошибка."
+
+    # ── Разбор отдельного ответа (теория + эталон) ────────────────────
+    def analyze_answer(
+        self, question: str, answer: str, fmt: str, title: str, company: str,
+        level: str = "middle",
+    ) -> dict:
+        """Обучающий разбор одного ответа кандидата.
+
+        → JSON {score, verdict, correct[], mistakes[], theory, model_answer}.
+        Теорию и эталон даёт ВСЕГДА (это тренажёр), даже если ответа по сути нет.
+        Оценка калибруется под уровень (level): для junior планка ниже, для senior выше.
+        """
+        fmt_info = self._INTERVIEW_FORMATS.get(fmt, self._INTERVIEW_FORMATS["tech"])
+        persona = fmt_info["label"].lower()
+        level_label = self._LEVELS.get(level, self._LEVELS["middle"])["label"]
+        system_prompt = (
+            f"Оценивай по планке уровня {level_label}. "
+            f"Ты — наставник-эксперт по подготовке к собеседованиям. Разбираешь ответ "
+            f"кандидата на {persona} интервью на позицию «{title}». Цель — НАУЧИТЬ: "
+            "честно укажи ошибки и дай правильную теорию.\n\n"
+            "Верни СТРОГО JSON:\n"
+            "{\n"
+            '  "score": <целое 1-10>,\n'
+            '  "verdict": "Зачтено | Частично | Неверно",\n'
+            '  "correct": ["что в ответе верно/удачно", ...],\n'
+            '  "mistakes": ["ошибка или что упущено — конкретно", ...],\n'
+            '  "theory": "Правильная теория по теме вопроса: по делу, понятно, 3-6 предложений. Можно списком ключевых пунктов.",\n'
+            '  "model_answer": "Краткий эталонный ответ — как ответил бы сильный кандидат (2-5 предложений)."\n'
+            "}\n"
+            "Если ответ пустой/«не знаю» — score низкий, correct может быть пустым, "
+            "но theory и model_answer заполни обязательно."
+        )
+        user_prompt = (
+            f"ВОПРОС ИНТЕРВЬЮЕРА:\n{question}\n\n"
+            f"ОТВЕТ КАНДИДАТА:\n{answer or '(ответа нет)'}"
+        )
+        content = self._complete(
+            [{"role": "system", "content": system_prompt},
+             {"role": "user", "content": user_prompt}],
+            temperature=0.2, json_mode=True, max_tokens=900, model=self.analysis_model,
+        )
+        data = json.loads(content)
+        # Нормализация типов для UI.
+        data["score"] = int(data.get("score", 0) or 0)
+        for k in ("correct", "mistakes"):
+            v = data.get(k)
+            data[k] = v if isinstance(v, list) else ([v] if v else [])
+        data["theory"] = str(data.get("theory") or "")
+        data["model_answer"] = str(data.get("model_answer") or "")
+        data["verdict"] = str(data.get("verdict") or "")
+        return data
+
+    def get_hint(self, question: str, fmt: str, title: str) -> str:
+        """Короткая подсказка по текущему вопросу — направление, без полного ответа."""
+        system_prompt = (
+            "Ты помогаешь кандидату на собеседовании. Дай КОРОТКУЮ подсказку "
+            "(1–2 предложения): направление мысли и 2–3 ключевых термина. "
+            "НЕ давай полный ответ — только наводку."
+        )
+        content = self._complete(
+            [{"role": "system", "content": system_prompt},
+             {"role": "user", "content": f"Вопрос: {question}"}],
+            temperature=0.3, json_mode=False, max_tokens=180, model=self.analysis_model,
+        )
+        return content.strip()
+
+    def get_model_answer(self, question: str, fmt: str, title: str) -> dict:
+        """Эталонный ответ + теория по текущему вопросу → {model_answer, theory}."""
+        system_prompt = (
+            f"Ты — эксперт по теме интервью на позицию «{title}». Дай образцовый ответ "
+            "на вопрос и краткую теорию.\n\n"
+            "Верни СТРОГО JSON:\n"
+            '{ "model_answer": "Эталонный ответ (3-6 предложений).",'
+            ' "theory": "Ключевая теория по теме: понятно и по делу." }'
+        )
+        content = self._complete(
+            [{"role": "system", "content": system_prompt},
+             {"role": "user", "content": f"Вопрос: {question}"}],
+            temperature=0.3, json_mode=True, max_tokens=700, model=self.analysis_model,
+        )
+        data = json.loads(content)
+        return {
+            "model_answer": str(data.get("model_answer") or ""),
+            "theory": str(data.get("theory") or ""),
+        }
 
     def evaluate_mock_interview(
         self, history: list[dict], fmt: str, title: str, company: str

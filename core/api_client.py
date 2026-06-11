@@ -15,9 +15,14 @@ import logging
 import urllib.parse
 import urllib.request
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from core.config import AppConfig
 from core.utils import strip_html
+
+# Сколько деталей вакансий тянуть параллельно. Запросы к api.hh.ru независимы;
+# умеренный пул кратно ускоряет загрузку, не упираясь в rate-limit (429).
+_DETAIL_WORKERS = 6
 
 # hh.ru требует осмысленный User-Agent, иначе отвечает 403.
 _USER_AGENT = "qa-smart-assistant/0.1 (job search helper)"
@@ -118,20 +123,32 @@ class HHApiClient:
         total = len(items)
         logging.info(f"🆕 API hh.ru: найдено вакансий: {total}. Загружаю детали...")
 
-        result: list[dict] = []
-        for idx, base in enumerate(items, 1):
-            label = base["title"][:60]
-            logging.info(f"⏳ [API {idx}/{total}] {label}")
-            if progress_callback:
-                progress_callback(idx, total, label)
+        def _load_detail(base: dict) -> dict:
+            """Догружает полное описание вакансии (выполняется в пуле потоков)."""
             try:
                 detail = self._get_json(f"/vacancies/{base['id']}")
                 base.update(self._map_detail(detail))
             except Exception as e:
                 logging.warning(f"Деталь {base['id']} не загружена: {e}")
-            result.append(base)
-            if on_vacancy:
-                on_vacancy(dict(base))
+            return base
+
+        # Детали тянем параллельно: запросы независимы и сетевые (I/O-bound).
+        # Сами _fetch'и идут в потоках, а callbacks (progress/on_vacancy) —
+        # в этом (вызывающем) потоке по мере готовности → потокобезопасно.
+        result: list[dict] = []
+        if total:
+            workers = min(_DETAIL_WORKERS, total)
+            with ThreadPoolExecutor(max_workers=workers) as pool:
+                futures = [pool.submit(_load_detail, b) for b in items]
+                for idx, fut in enumerate(as_completed(futures), 1):
+                    base = fut.result()
+                    label = base["title"][:60]
+                    logging.info(f"⏳ [API {idx}/{total}] {label}")
+                    if progress_callback:
+                        progress_callback(idx, total, label)
+                    result.append(base)
+                    if on_vacancy:
+                        on_vacancy(dict(base))
 
         logging.info(f"🏁 API hh.ru: готово, вакансий: {len(result)}")
         return result

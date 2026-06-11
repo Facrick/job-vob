@@ -46,8 +46,8 @@ def index():
         # ── Сайдбар ───────────────────────────────────────────
         with ui.column().classes("vob-rail h-full no-wrap gap-0").style(
             "width:216px;min-width:216px;"
-            "background:#0c0c0e;"
-            "border-right:1px solid #1f1f23;"
+            "background:#141419;"
+            "border-right:1px solid #26262f;"
             "transition:width .18s cubic-bezier(.4,0,.2,1)"
         ) as sidebar:
             # ── Логотип / заголовок ────────────────────────────
@@ -56,10 +56,10 @@ def index():
                     "flat round dense"
                 ).style("color:#71717a").tooltip("Свернуть/развернуть")
                 with ui.column().classes("gap-0 vob-rail-hide"):
-                    ui.label("QA Assistant").classes(
+                    ui.label("Job VOB").classes(
                         "text-sm font-semibold leading-tight"
                     ).style("color:#fafafa;letter-spacing:-.01em")
-                    ui.label("Pro · Job CRM").classes(
+                    ui.label("QA Career OS").classes(
                         "text-xs leading-tight"
                     ).style("color:#52525b")
             ui.separator().style("opacity:.4")

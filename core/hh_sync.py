@@ -17,31 +17,32 @@ from core.models import VacancyStatus
 # Ключи — подстроки (lower), которые ищутся в тексте статуса hh.ru.
 # Порядок важен: более специфичные строки — первыми.
 _HH_KEYWORDS: list[tuple[str, VacancyStatus]] = [
-    # Отказ
+    # ── Отказ ──────────────────────────────────────────────────────────────────
+    ("вам отказали",             VacancyStatus.REJECTED),   # точная фраза кнопки hh.ru
     ("отказ",                    VacancyStatus.REJECTED),
     ("отклонен",                 VacancyStatus.REJECTED),
-    ("не подош",                 VacancyStatus.REJECTED),   # матчит "не подошел/ёл/ли"
-    # Оффер
-    ("оффер",                    VacancyStatus.OFFER),
+    ("не подош",                 VacancyStatus.REJECTED),   # "не подошел/ёл/ли"
+    # ── Оффер ──────────────────────────────────────────────────────────────────
+    ("вам предложили работу",    VacancyStatus.OFFER),      # точная фраза кнопки hh.ru
     ("предложение о работе",     VacancyStatus.OFFER),
     ("job offer",                VacancyStatus.OFFER),
-    # Собеседование / приглашение — только точные статусные фразы.
-    # Одиночные «интервью» / «собеседование» убраны: они встречаются в описаниях
-    # вакансий и дают ложные срабатывания для неоткликнутых вакансий.
-    # ВАЖНО: «приглашен» убран — это подстрока слова «приглашение».
+    # «оффер» убран — слово встречается в описаниях вакансий («после — оффер»)
+    # ── Собеседование ──────────────────────────────────────────────────────────
     ("приглашение на интервью",  VacancyStatus.INTERVIEW),
     ("вас пригласили",           VacancyStatus.INTERVIEW),
-    ("приглашён",                VacancyStatus.INTERVIEW),  # ё-версия, не подстрока
+    ("приглашён",                VacancyStatus.INTERVIEW),  # ё-версия
     ("телефонное интервью",      VacancyStatus.INTERVIEW),
-    # Отклик отправлен / просмотрен — только статусные формулировки
-    ("ваш отклик",               VacancyStatus.APPLIED),
+    # ── Отклик отправлен / на рассмотрении ─────────────────────────────────────
+    ("вы откликнулись",          VacancyStatus.APPLIED),    # точная фраза кнопки hh.ru
     ("вы уже откликнулись",      VacancyStatus.APPLIED),
+    ("ваш отклик",               VacancyStatus.APPLIED),
     ("отклик рассматривается",   VacancyStatus.APPLIED),
     ("отклик просмотрен",        VacancyStatus.APPLIED),
     ("отклик отправлен",         VacancyStatus.APPLIED),
     ("просмотрен работодателем", VacancyStatus.APPLIED),
     ("response sent",            VacancyStatus.APPLIED),
-    ("viewed",                   VacancyStatus.APPLIED),
+    # ── Кнопка «Откликнуться» → вакансия открыта, отклика нет ──────────────────
+    ("можно откликнуться",       VacancyStatus.DISCOVERED),
 ]
 
 
@@ -57,18 +58,33 @@ def map_hh_status(hh_status_text: str) -> VacancyStatus | None:
     return None
 
 
+# Ранг этапов воронки. Синхронизация обновляет статус ТОЛЬКО если новый этап
+# ВЫШЕ текущего по рангу. Понижение пропускаем (страница hh.ru ненадёжно
+# отражает отклик, ложная «Новая» не должна затирать реальные «Отклик/Интервью»).
+# Оффер и отказ — наверху ранга, поэтому решения работодателя всё равно проставляются.
+_STATUS_RANK: dict[str, int] = {
+    VacancyStatus.DISCOVERED.value: 0,
+    VacancyStatus.PROCESSED.value:  1,
+    VacancyStatus.APPLIED.value:    2,
+    VacancyStatus.INTERVIEW.value:  3,
+    VacancyStatus.OFFER.value:      4,
+    VacancyStatus.REJECTED.value:   5,
+}
+
+
 class SyncResult:
     """Итог одной синхронизации."""
 
     def __init__(self):
         self.updated:      list[dict] = []   # {vacancy_id, title, company, old, new}
         self.skipped_same: int = 0            # статус уже актуален
+        self.skipped_back: int = 0            # hh.ru показал более ранний этап — не откатываем
         self.not_in_crm:   int = 0            # вакансия есть на hh.ru но не в CRM
         self.unrecognized: list[str] = []     # тексты статусов, которые не распознали
 
     @property
     def total_negotiations(self) -> int:
-        return (len(self.updated) + self.skipped_same +
+        return (len(self.updated) + self.skipped_same + self.skipped_back +
                 self.not_in_crm + len(self.unrecognized))
 
     def summary_lines(self) -> list[str]:
@@ -77,6 +93,8 @@ class SyncResult:
             lines.append(f"Обновлено статусов: {len(self.updated)}")
         if self.skipped_same:
             lines.append(f"Уже актуальны: {self.skipped_same}")
+        if self.skipped_back:
+            lines.append(f"Пропущено (этап не выше текущего): {self.skipped_back}")
         if self.not_in_crm:
             lines.append(f"Нет в CRM (ещё не добавлены): {self.not_in_crm}")
         if self.unrecognized:
@@ -99,6 +117,13 @@ def sync_negotiations(repo, negotiations: list[dict]) -> SyncResult:
         title   = neg.get("title", vid)
         company = neg.get("company", "")
 
+        # Закрытая/архивная вакансия — это НЕ статус отклика. Закрытие вакансии
+        # не меняет твой этап в воронке, поэтому просто пропускаем (и НЕ пишем
+        # в «нераспознанные» — это не ошибка парсинга).
+        if hh_text == "закрыта":
+            result.skipped_same += 1
+            continue
+
         new_status = map_hh_status(hh_text)
         if new_status is None:
             if hh_text:
@@ -110,14 +135,22 @@ def sync_negotiations(repo, negotiations: list[dict]) -> SyncResult:
             result.not_in_crm += 1
             continue
 
-        current = vacancy.get("status") or VacancyStatus.DISCOVERED
+        current = str(vacancy.get("status") or VacancyStatus.DISCOVERED.value)
+        new_str = str(new_status)
 
-        if str(current) == str(new_status):
+        if current == new_str:
             result.skipped_same += 1
             continue
 
-        # Статус hh.ru всегда актуальнее — обновляем без ограничений.
-        # Вакансия может переоткрыться, отклик сброситься — статус должен отражать реальность.
+        # Обновляем ТОЛЬКО если новый этап ВЫШЕ текущего по рангу.
+        # Оффер и отказ стоят наверху ранга, поэтому проставляются поверх
+        # любого предыдущего этапа; «Новая»/«Отклик» не понижают «Интервью».
+        if _STATUS_RANK.get(new_str, 0) <= _STATUS_RANK.get(current, 0):
+            result.skipped_back += 1
+            logging.debug(
+                f"[Sync] {title} ({vid}): пропуск, {new_str} не выше {current}"
+            )
+            continue
 
         repo.update_status(vid, new_status)
         logging.info(

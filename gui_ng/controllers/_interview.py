@@ -15,10 +15,14 @@ class _InterviewMixin:
             return
         v = self.repo.get_vacancy_by_id(self.selected_vacancy_id)
         fmt = self.el["combo_format"].value or "tech"
+        level = self.el["combo_level"].value or "middle"
+        resume_text = self._safe_resume_text() if self.el["toggle_resume"].value else ""
         system_msg = self.interview_engine.get_interview_system_prompt(
-            fmt, v["company"], v["title"], v.get("description", "")
+            fmt, v["company"], v["title"], v.get("description", ""),
+            level=level, resume_text=resume_text,
         )
         self.mock_chat_history = [{"role": "system", "content": system_msg}]
+        self.mock_reviews = {}   # index ответа кандидата → разбор {score, theory, …}
         self._clear_report()
         self.el["btn_start"].disable()
         try:
@@ -34,18 +38,48 @@ class _InterviewMixin:
         finally:
             self.el["btn_start"].enable()
 
+    def _current_question(self) -> str:
+        """Последний вопрос интервьюера (последняя реплика assistant)."""
+        for m in reversed(self.mock_chat_history or []):
+            if m["role"] == "assistant":
+                return m["content"]
+        return ""
+
     async def handle_send_chat(self):
         user_text = (self.el["input_chat"].value or "").strip()
         if not user_text or not self.mock_chat_history:
             return
+        question = self._current_question()
+        # Индекс этого ответа = сколько ответов кандидата уже было.
+        answer_idx = sum(1 for m in self.mock_chat_history if m["role"] == "user")
         self.mock_chat_history.append({"role": "user", "content": user_text})
         self.el["input_chat"].set_value("")
         self._render_mock_chat()
         self.el["btn_send"].disable()
+
+        v = self.repo.get_vacancy_by_id(self.selected_vacancy_id) if self.selected_vacancy_id else {}
+        fmt = self.el["combo_format"].value or "tech"
+        title, company = (v or {}).get("title", ""), (v or {}).get("company", "")
         try:
+            # 1) Обучающий разбор ответа (теория + эталон) — показываем отдельно.
+            try:
+                level = self.el["combo_level"].value or "middle"
+                review = await run.io_bound(
+                    self.interview_engine.analyze_answer,
+                    question, user_text, fmt, title, company, level,
+                )
+                if not hasattr(self, "mock_reviews"):
+                    self.mock_reviews = {}
+                self.mock_reviews[answer_idx] = review
+            except Exception as ex:
+                logging.warning(f"[Interview] разбор ответа не удался: {ex}")
+
+            # 2) Интервьюер задаёт СЛЕДУЮЩИЙ вопрос (без развёрнутой оценки —
+            #    она уже в разборе). Короткая реакция + новый вопрос.
             messages = list(self.mock_chat_history) + [{
                 "role": "system",
-                "content": "Оцени ответ по 10-балльной шкале, укажи ошибки. Задай следующий вопрос.",
+                "content": ("Кратко (1 фраза) отреагируй и задай СЛЕДУЮЩИЙ вопрос. "
+                            "Не давай развёрнутую оценку — разбор выводится отдельно."),
             }]
             reply = await run.io_bound(self.interview_engine.generate_mock_reply, messages)
             self.mock_chat_history.append({"role": "assistant", "content": reply})
@@ -55,6 +89,64 @@ class _InterviewMixin:
             self._show_error(str(ex))
         finally:
             self.el["btn_send"].enable()
+
+    async def handle_show_hint(self):
+        question = self._current_question()
+        if not question:
+            self._show_error("Сначала начните интервью — нужен вопрос.")
+            return
+        fmt = self.el["combo_format"].value or "tech"
+        v = self.repo.get_vacancy_by_id(self.selected_vacancy_id) if self.selected_vacancy_id else {}
+        self.el["btn_hint"].disable()
+        try:
+            hint = await run.io_bound(
+                self.interview_engine.get_hint, question, fmt, (v or {}).get("title", "")
+            )
+            self._show_coach_dialog("💡 Подсказка", hint_text=hint)
+        except Exception as ex:
+            self._show_error(str(ex))
+        finally:
+            self.el["btn_hint"].enable()
+
+    async def handle_show_model_answer(self):
+        question = self._current_question()
+        if not question:
+            self._show_error("Сначала начните интервью — нужен вопрос.")
+            return
+        fmt = self.el["combo_format"].value or "tech"
+        v = self.repo.get_vacancy_by_id(self.selected_vacancy_id) if self.selected_vacancy_id else {}
+        self.el["btn_model"].disable()
+        try:
+            data = await run.io_bound(
+                self.interview_engine.get_model_answer, question, fmt, (v or {}).get("title", "")
+            )
+            self._show_coach_dialog(
+                "📝 Эталонный ответ",
+                model_answer=data.get("model_answer", ""),
+                theory=data.get("theory", ""),
+            )
+        except Exception as ex:
+            self._show_error(str(ex))
+        finally:
+            self.el["btn_model"].enable()
+
+    def _show_coach_dialog(self, title: str, *, hint_text: str = "",
+                           model_answer: str = "", theory: str = ""):
+        with ui.dialog() as dlg, ui.card().style(
+            "min-width:480px;max-width:680px;background:#141419;border:1px solid #26262f"
+        ):
+            ui.label(title).classes("text-base font-semibold").style("color:#fafafa")
+            if hint_text:
+                ui.markdown(hint_text).classes("text-sm")
+            if model_answer:
+                ui.label("Эталонный ответ").classes("text-xs font-semibold").style("color:#a78bfa")
+                ui.markdown(model_answer).classes("text-sm")
+            if theory:
+                ui.label("Теория").classes("text-xs font-semibold").style("color:#a78bfa")
+                ui.markdown(theory).classes("text-sm")
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Закрыть", on_click=dlg.close).props("flat no-caps")
+        dlg.open()
 
     async def handle_evaluate_interview(self):
         if len([m for m in self.mock_chat_history if m["role"] == "user"]) < 2:
@@ -76,6 +168,7 @@ class _InterviewMixin:
 
     def handle_reset_mock(self):
         self.mock_chat_history = []
+        self.mock_reviews = {}
         if self.selected_vacancy_id:
             self.repo.save_mock_interview(self.selected_vacancy_id, [])
         self.el["chat_arena"].clear()
@@ -86,13 +179,48 @@ class _InterviewMixin:
         arena = self.el.get("chat_arena")
         if arena is None:
             return
+        reviews = getattr(self, "mock_reviews", {}) or {}
         arena.clear()
         with arena:
+            answer_idx = 0
             for msg in self.mock_chat_history:
                 if msg["role"] == "assistant":
                     ui.chat_message(msg["content"], name="Тимлид", sent=False)
                 elif msg["role"] == "user":
                     ui.chat_message(msg["content"], name="Вы", sent=True)
+                    review = reviews.get(answer_idx)
+                    if review:
+                        self._render_review(review)
+                    answer_idx += 1
+
+    def _render_review(self, review: dict):
+        """Карточка обучающего разбора ответа: оценка, ошибки, теория, эталон."""
+        score = int(review.get("score", 0) or 0)
+        color = "#66bb6a" if score >= 7 else "#ff8f00" if score >= 4 else "#ef5350"
+        verdict = review.get("verdict", "") or ""
+        header = f"Разбор ответа · {verdict} · {score}/10"
+        with ui.expansion(header, icon="school").classes("w-full").props(
+            "dense"
+        ).style(
+            f"background:rgba(167,139,250,.06);border:1px solid {color}55;"
+            "border-radius:10px;margin:2px 0"
+        ):
+            correct = review.get("correct") or []
+            if correct:
+                ui.label("✅ Верно").classes("text-xs font-semibold").style("color:#66bb6a")
+                ui.markdown("\n".join(f"- {c}" for c in correct)).classes("text-sm")
+            mistakes = review.get("mistakes") or []
+            if mistakes:
+                ui.label("⚠️ Ошибки / упущено").classes("text-xs font-semibold").style("color:#ff8f00")
+                ui.markdown("\n".join(f"- {m}" for m in mistakes)).classes("text-sm")
+            theory = review.get("theory") or ""
+            if theory:
+                ui.label("📖 Теория").classes("text-xs font-semibold").style("color:#a78bfa")
+                ui.markdown(theory).classes("text-sm")
+            model_answer = review.get("model_answer") or ""
+            if model_answer:
+                ui.label("📝 Эталонный ответ").classes("text-xs font-semibold").style("color:#a78bfa")
+                ui.markdown(model_answer).classes("text-sm")
 
     def _clear_report(self):
         self.el["report_box"].clear()

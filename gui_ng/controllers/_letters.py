@@ -22,7 +22,17 @@ class _LettersMixin:
             self._show_error("Вакансия не найдена в базе.")
             return
         vid = self.selected_vacancy_id
-        self.el["btn_generate"].disable()
+        btn = self.el["btn_generate"]
+        btn.disable()
+        btn.set_text("Генерирую…")
+        # Показываем прогресс-бар и статус
+        progress = self.el.get("letter_progress")
+        status_lbl = self.el.get("letter_status")
+        if progress:
+            progress.set_visibility(True)
+        if status_lbl:
+            status_lbl.set_text("ИИ пишет письмо…")
+            status_lbl.set_visibility(True)
         try:
             resume_text = self.resume.extract_text()
             response = await run.io_bound(
@@ -42,7 +52,12 @@ class _LettersMixin:
             logging.error(f"[BG] {ex}")
             self._show_error(str(ex))
         finally:
-            self.el["btn_generate"].enable()
+            btn.enable()
+            btn.set_text("ИИ-письмо")
+            if progress:
+                progress.set_visibility(False)
+            if status_lbl:
+                status_lbl.set_visibility(False)
 
     async def handle_analyze(self):
         if not self.selected_vacancy_id:
@@ -229,9 +244,91 @@ class _LettersMixin:
                                 if ccomment:
                                     ui.label(ccomment).classes("text-xs").style("color:#71717a")
 
-            with ui.row().classes("justify-end w-full"):
+            ui.separator().style("opacity:.3")
+            with ui.row().classes("justify-between w-full items-center"):
+                # Формируем фидбэк из критериев с баллом < 7
+                weak = [
+                    c for c in criteria
+                    if int(c.get("score", 0)) < 7
+                ]
+                if weak:
+                    improve_btn = ui.button(
+                        "Поправить по критериям", icon="auto_fix_high",
+                    ).props("no-caps")
+                    improve_btn.tooltip(
+                        "ИИ перепишет письмо, улучшив слабые места: "
+                        + ", ".join(c.get("name", "") for c in weak)
+                    )
+
+                    async def _do_improve(w=weak, d=dlg):
+                        d.close()
+                        await self._improve_letter_by_criteria(w)
+
+                    improve_btn.on_click(_do_improve)
+                else:
+                    ui.label("Все критерии в норме 👍").classes("text-xs").style(
+                        "color:#34d399"
+                    )
+
                 ui.button("Закрыть", on_click=dlg.close).props("flat no-caps")
         dlg.open()
+
+    async def _improve_letter_by_criteria(self, weak_criteria: list[dict]) -> None:
+        """Улучшает письмо на основе слабых критериев оценки через ИИ."""
+        if not self.selected_vacancy_id:
+            return
+        letter = self.el["text_letter"].value or ""
+        if not letter.strip():
+            return
+
+        v = self.repo.get_vacancy_by_id(self.selected_vacancy_id)
+        title       = (v or {}).get("title", "")
+        company     = (v or {}).get("company", "")
+        description = (v or {}).get("description", "")
+
+        # Строим фидбэк из слабых критериев: "Критерий (N/10): комментарий"
+        feedback_parts = []
+        for c in weak_criteria:
+            cname    = c.get("name", "")
+            cscore   = c.get("score", 0)
+            cmax     = c.get("max", 10)
+            ccomment = c.get("comment", "")
+            part = f"{cname} ({cscore}/{cmax})"
+            if ccomment:
+                part += f": {ccomment}"
+            feedback_parts.append(part)
+        feedback = "Улучши следующие слабые места письма:\n" + "\n".join(
+            f"• {p}" for p in feedback_parts
+        )
+
+        btn = self.el["btn_score_letter"]
+        btn.disable()
+        btn.set_text("Улучшаю…")
+        ui.notify("Улучшаю письмо по критериям…", type="info", timeout=3000)
+
+        try:
+            result = await run.io_bound(
+                LetterAnalyzer().adjust_letter,
+                letter, feedback, title, description,
+            )
+            improved = (result or {}).get("letter", "").strip()
+            if not improved:
+                ui.notify("ИИ не вернул улучшенный текст.", type="warning")
+                return
+            # Сохраняем в историю и обновляем поле
+            recs = self.el["text_recs"].value or ""
+            self.repo.save_cover_letter(self.selected_vacancy_id, improved, recs)
+            self.el["text_letter"].set_value(improved)
+            ui.notify(
+                "Письмо улучшено по критериям и сохранено в историю.",
+                type="positive", icon="auto_fix_high",
+            )
+        except Exception as ex:
+            logging.error(f"[ImproveLetterByCriteria] {ex}")
+            self._show_error(f"Ошибка улучшения письма: {ex}")
+        finally:
+            btn.enable()
+            btn.set_text("Оценить")
 
     def handle_letter_history(self) -> None:
         """Показывает диалог с историей версий письма (до 5) с возможностью восстановить."""
@@ -297,6 +394,34 @@ class _LettersMixin:
                             "color:#a1a1aa;white-space:pre-wrap;margin-top:4px"
                         )
         dlg.open()
+
+    def refresh_letter_vacancy_select(self) -> None:
+        """Обновляет список вакансий в селекте вкладки Письма."""
+        sel = self.el.get("letter_vacancy_select")
+        if not sel:
+            return
+        vacancies = self.repo.get_vacancies_filtered("all")
+        options = {
+            v["id"]: f"{v.get('company', '—')} — {v.get('title', '—')}"
+            for v in vacancies if v.get("id")
+        }
+        sel.options = options
+        sel.update()
+        # Синхронизируем с текущей выбранной вакансией
+        if self.selected_vacancy_id and self.selected_vacancy_id in options:
+            sel.set_value(self.selected_vacancy_id)
+
+    def handle_letter_vacancy_select(self, e) -> None:
+        """Обрабатывает выбор вакансии прямо из вкладки Письма."""
+        vid = e.value
+        if not vid:
+            return
+        self.select_vacancy(vid)
+        # Подгружаем существующее письмо если есть
+        letter_data = self.repo.get_cover_letter(vid)
+        if letter_data:
+            self.el["text_letter"].set_value(letter_data.get("letter_text") or "")
+            self.el["text_recs"].set_value(letter_data.get("recommendations") or "")
 
     def copy_letter(self):
         text = self.el["text_letter"].value or ""

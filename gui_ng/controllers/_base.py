@@ -87,7 +87,7 @@ class _AppControllerBase:
         log_dir = user_path("logs")
         log_dir.mkdir(parents=True, exist_ok=True)
         root = logging.getLogger()
-        root.setLevel(logging.INFO)
+        root.setLevel(logging.DEBUG)
         for h in root.handlers[:]:
             root.removeHandler(h)
         fh = RotatingFileHandler(

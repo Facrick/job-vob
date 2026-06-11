@@ -1,12 +1,28 @@
 """Вкладка 1 — CRM / Поиск вакансий."""
 from nicegui import ui
 
-from gui_ng.views._shared import _card, _scroll, _split
+from gui_ng.views._shared import _card, _scroll, _split, _metric_card
+
+# Карточки-метрики воронки: (ключ, подпись, иконка, акцент)
+_FUNNEL_METRICS = [
+    ("total",     "Всего вакансий", "layers",          "#a78bfa"),
+    ("new",       "Новые",          "auto_awesome",    "#60a5fa"),
+    ("active",    "В работе",       "pending_actions", "#fb923c"),
+    ("interview", "Собеседования",  "event_available", "#c084fc"),
+    ("offer",     "Офферы",         "celebration",     "#4ade80"),
+]
 
 
 def build_scout_tab(c):
     el = c.el
     with ui.column().classes("w-full h-full no-wrap gap-3"):
+        # ── Карточки-метрики воронки (Fusion KPI) ──────────────
+        with ui.row().classes("w-full gap-3 no-wrap"):
+            el["funnel_metrics"] = {}
+            for key, label, icon, accent in _FUNNEL_METRICS:
+                val, _ = _metric_card(label, "0", icon, accent)
+                el["funnel_metrics"][key] = val
+
         # Панель фильтров
         with _card():
             with ui.row().classes("items-center w-full gap-2"):
@@ -105,7 +121,6 @@ def build_scout_tab(c):
                 "color=primary"
             )
             el["search_progress"].set_visibility(False)
-            el["funnel_counters"] = ui.row().classes("gap-2 flex-wrap items-center")
             with ui.row().classes("items-center gap-2 w-full"):
                 el["crm_search"] = ui.input(
                     placeholder="🔍  Поиск по названию / компании…"
@@ -114,28 +129,34 @@ def build_scout_tab(c):
                 )
 
         # Панель bulk-действий (скрыта пока нет выделения)
-        with ui.row().classes("items-center gap-2 w-full") as bulk_bar:
+        with ui.card().classes("w-full").style(
+            "background:#1e1b4b;border:1px solid #4f46e5;padding:8px 12px"
+        ) as bulk_bar:
             el["bulk_bar"] = bulk_bar
-            ui.icon("checklist", color="primary")
-            el["bulk_count_label"] = ui.label("").classes("text-sm font-semibold").style(
-                "color:#e4e4e7"
-            )
-            el["bulk_status_select"] = ui.select(
-                {"discovered": "Новая", "processed": "Письмо готово",
-                 "applied": "Отклик отправлен", "interview": "Собеседование",
-                 "offer": "Оффер!", "rejected": "Отказ"},
-                label="Новый статус",
-            ).props("dense outlined").classes("w-48")
-            ui.button(
-                "Применить", icon="done_all", on_click=c.handle_bulk_status
-            ).props("no-caps dense")
-            ui.button(
-                "Удалить", icon="delete_outline", on_click=c.handle_bulk_delete
-            ).props("outline no-caps dense color=negative")
-            ui.space()
-            ui.button(
-                "Снять выделение", icon="deselect", on_click=c.handle_bulk_deselect
-            ).props("flat no-caps dense").style("color:#71717a")
+            with ui.row().classes("items-center gap-3 w-full no-wrap"):
+                ui.icon("checklist", color="primary")
+                el["bulk_count_label"] = ui.label("").classes("text-sm font-semibold").style(
+                    "color:#c7d2fe"
+                )
+                ui.separator().props("vertical").style("height:24px;opacity:.4")
+                ui.label("Сменить статус:").classes("text-xs").style("color:#a5b4fc;white-space:nowrap")
+                el["bulk_status_select"] = ui.select(
+                    {"discovered": "Новая", "processed": "Письмо готово",
+                     "applied": "Отклик отправлен", "interview": "Собеседование",
+                     "offer": "Оффер", "rejected": "Отказ"},
+                    label=None,
+                ).props("dense outlined").classes("w-44").style("min-width:176px")
+                ui.button(
+                    "Применить", icon="done_all", on_click=c.handle_bulk_status
+                ).props("no-caps dense").style("background:#4f46e5;color:#fff")
+                ui.separator().props("vertical").style("height:24px;opacity:.4")
+                ui.button(
+                    "Удалить выбранные", icon="delete_outline", on_click=c.handle_bulk_delete
+                ).props("outline no-caps dense color=negative")
+                ui.space()
+                ui.button(
+                    "Снять выделение", icon="close", on_click=c.handle_bulk_deselect
+                ).props("flat no-caps dense").style("color:#71717a").tooltip("Отменить выделение")
         bulk_bar.set_visibility(False)
 
         # Таблица + детали
@@ -160,6 +181,9 @@ def build_scout_tab(c):
                         selection="multiple", on_select=c.handle_bulk_selection_change,
                     ).classes("w-full h-full vob-table")
                     table.props("flat dense :rows-per-page-options=[0]")
+                    # Расширяем колонку чекбоксов
+                    ui.add_css(".vob-table th:first-child, .vob-table td:first-child"
+                               "{ width: 48px !important; min-width: 48px !important; padding: 0 8px !important; }")
                     table.add_slot("body-cell-match", """
                         <q-td :props="props">
                           <q-badge :style="'background:'+props.row.match_color+'40'+';color:#fff;border:1px solid '+props.row.match_color+';font-weight:700;min-width:38px;text-align:center'">{{ props.row.match }}</q-badge>

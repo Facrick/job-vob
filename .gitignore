@@ -1,3 +1,7 @@
+*.py[cod]
+assets/external/
+.states
+.web
 # === СЕКРЕТЫ ===
 .env
 .env.*

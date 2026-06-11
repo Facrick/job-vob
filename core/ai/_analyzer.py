@@ -4,9 +4,8 @@ import logging
 import os
 import time
 
-from groq import Groq
-
 from core.config import AppConfig
+from core.groq_client import make_groq_client
 from core.prompts import PromptRepository
 
 
@@ -16,7 +15,7 @@ class LetterAnalyzer:
         self.api_key = os.getenv("GROQ_API_KEY")
         if not self.api_key:
             raise ValueError("GROQ_API_KEY не найден в .env")
-        self.client = Groq(api_key=self.api_key)
+        self.client = make_groq_client(self.api_key)
         self.model = self.config.get("llm_model")
         self.fallback_model = self.config.get("llm_fallback_model")
         self.analysis_model = self.config.get("llm_analysis_model")

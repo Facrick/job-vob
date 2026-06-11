@@ -12,20 +12,28 @@ class _AnalyticsMixin:
 
     def draw_analytics_chart(self):
         vacancies = self.repo.get_vacancies_filtered("all")
-        mins = [v["salary_min"] for v in vacancies if v.get("salary_min")]
-        maxs = [v["salary_max"] for v in vacancies if v.get("salary_max")]
-        if not mins and not maxs:
+        # Для каждой вакансии берём среднее между min и max (или одно из них)
+        midpoints = []
+        mins, maxs = [], []
+        for v in vacancies:
+            lo = v.get("salary_min") or 0
+            hi = v.get("salary_max") or 0
+            if lo or hi:
+                mid = (lo + hi) // 2 if lo and hi else (lo or hi)
+                midpoints.append(mid)
+                if lo: mins.append(lo)
+                if hi: maxs.append(hi)
+        if not midpoints:
             self._show_info("Нет данных", "В базе нет вакансий с указанными зарплатами.")
             return
-        all_s = mins + maxs
         box = self.el["salary_box"]
         box.clear()
         with box:
             with ui.row().classes("gap-3 flex-wrap"):
                 stats = [
                     ("Минимум", min(mins) if mins else 0, "#64b5f6"),
-                    ("Медиана", int(statistics.median(all_s)), "#7986cb"),
-                    ("Среднее", int(sum(all_s) / len(all_s)), "#ba68c8"),
+                    ("Медиана", int(statistics.median(midpoints)), "#7986cb"),
+                    ("Среднее", int(sum(midpoints) / len(midpoints)), "#ba68c8"),
                     ("Максимум", max(maxs) if maxs else 0, "#81c784"),
                 ]
                 for label, value, color in stats:
@@ -45,7 +53,7 @@ class _AnalyticsMixin:
                 ("> 250 000", 250_000, 10_000_000),
             ]
             colors = ["#64b5f6", "#7986cb", "#ba68c8", "#9575cd", "#81c784"]
-            counts = [(lbl, sum(1 for s in mins if lo <= s < hi)) for lbl, lo, hi in buckets]
+            counts = [(lbl, sum(1 for s in midpoints if lo <= s < hi)) for lbl, lo, hi in buckets]
             max_count = max((c for _, c in counts), default=0) or 1
             for (lbl, count), color in zip(counts, colors, strict=False):
                 pct = max(2, count / max_count * 100)
@@ -165,3 +173,15 @@ class _AnalyticsMixin:
 
     def handle_clear_logs(self):
         self.el["logs"].clear()
+
+    def handle_copy_logs(self):
+        from nicegui import ui
+        children = self.el["logs"].default_slot.children
+        content = "\n".join(
+            getattr(child, "text", "") for child in children
+        )
+        if content.strip():
+            ui.clipboard.write(content)
+            ui.notify("Логи скопированы в буфер обмена", type="positive", icon="content_copy")
+        else:
+            ui.notify("Лог пустой", type="info")

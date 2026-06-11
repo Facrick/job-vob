@@ -15,7 +15,14 @@ def build_interview_tab(c):
                     {"tech": "Техническое", "hr": "HR-скрининг",
                      "system_design": "System Design", "behavioral": "Поведенческое (STAR)"},
                     value="tech", label="Формат",
-                ).props("dense outlined").classes("ml-4").style("min-width:180px")
+                ).props("dense outlined").classes("ml-4").style("min-width:170px")
+                el["combo_level"] = ui.select(
+                    {"junior": "Junior", "middle": "Middle", "senior": "Senior"},
+                    value="middle", label="Уровень",
+                ).props("dense outlined").style("min-width:120px")
+                el["toggle_resume"] = ui.switch("По резюме", value=True).props(
+                    "dense"
+                ).tooltip("Задавать часть вопросов по вашему резюме и проверять заявленные навыки")
                 ui.space()
                 el["btn_start"] = ui.button(
                     "Начать", icon="play_arrow", on_click=c.handle_start_mock
@@ -49,6 +56,16 @@ def build_interview_tab(c):
                 el["input_chat"] = ui.input("Ваш ответ...").props(
                     "dense outlined"
                 ).classes("flex-grow").on("keydown.enter", c.handle_send_chat)
+                el["btn_hint"] = ui.button(
+                    "Подсказка", icon="lightbulb", on_click=c.handle_show_hint
+                ).props("outline no-caps").tooltip(
+                    "Короткая наводка по текущему вопросу (без полного ответа)"
+                )
+                el["btn_model"] = ui.button(
+                    "Эталон", icon="menu_book", on_click=c.handle_show_model_answer
+                ).props("outline no-caps").tooltip(
+                    "Показать эталонный ответ и теорию по текущему вопросу"
+                )
                 el["btn_send"] = ui.button(
                     "Отправить", icon="send", on_click=c.handle_send_chat
                 ).props("no-caps")

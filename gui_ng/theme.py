@@ -6,13 +6,14 @@
 
 from nicegui import ui
 
-# ── Дизайн-токены ───────────────────────────────────────────────
+# ── Дизайн-токены (Fusion dark) ─────────────────────────────────
 PRIMARY   = "#a78bfa"   # violet-400  — единственный акцент
-SURFACE   = "#18181b"   # zinc-900    — фон карточек
-BG        = "#09090b"   # zinc-950    — фон страницы
-BORDER    = "#27272a"   # zinc-800    — границы
-MUTED     = "#71717a"   # zinc-500    — вторичный текст
-TEXT      = "#fafafa"   # zinc-50     — основной текст
+SURFACE   = "#141419"   # карточка (сплошная, чуть синее чёрного)
+SURFACE_2 = "#1b1b22"   # вложенные элементы / hover
+BG        = "#0a0a0f"   # фон страницы
+BORDER    = "#26262f"   # границы
+MUTED     = "#71717a"   # вторичный текст
+TEXT      = "#fafafa"   # основной текст
 
 # Статусы воронки → (подпись, hex)
 STATUS_STYLE: dict[str, tuple[str, str]] = {
@@ -59,7 +60,7 @@ def apply_theme() -> None:
   *, *::before, *::after { box-sizing: border-box; }
 
   body {
-    background-color: #09090b;
+    background-color: #0a0a0f;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
     font-size: 14px;
     color: #fafafa;
@@ -72,15 +73,33 @@ def apply_theme() -> None:
   ::-webkit-scrollbar-thumb        { background: #3f3f46; border-radius: 99px; }
   ::-webkit-scrollbar-thumb:hover  { background: #52525b; }
 
-  /* ── Карточки: glassmorphism ──────────────────────────── */
+  /* ── Карточки: чистые сплошные (Fusion) ───────────────── */
   .q-card {
-    background: rgba(24, 24, 27, 0.85) !important;
-    backdrop-filter: blur(12px) saturate(120%);
-    -webkit-backdrop-filter: blur(12px) saturate(120%);
-    border: 1px solid rgba(255, 255, 255, 0.06) !important;
-    border-radius: 8px !important;
-    box-shadow: 0 1px 3px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.03) !important;
+    background: #141419 !important;
+    border: 1px solid #26262f !important;
+    border-radius: 14px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.45), 0 1px 2px rgba(0,0,0,.3) !important;
   }
+
+  /* ── Карточка-метрика (Fusion KPI) ────────────────────── */
+  .vob-metric {
+    background: #141419 !important;
+    border: 1px solid #26262f !important;
+    border-left: 2px solid var(--vob-accent, #a78bfa) !important;
+    border-radius: 12px !important;
+    padding: 12px 14px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,.45) !important;
+    transition: border-color .12s, transform .12s;
+  }
+  .vob-metric:hover { transform: translateY(-1px); }
+  .vob-metric-icon {
+    width: 34px; height: 34px; border-radius: 9px;
+    display: flex; align-items: center; justify-content: center;
+    background: color-mix(in srgb, var(--vob-accent, #a78bfa) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--vob-accent, #a78bfa) 28%, transparent);
+  }
+  .vob-metric-value { font-size: 20px; font-weight: 800; line-height: 1.05; color: #fafafa; }
+  .vob-metric-label { font-size: 11px; font-weight: 500; color: #71717a; }
 
   /* ── Layout-хелперы ───────────────────────────────────── */
   .vob-muted  { color: #71717a !important; }

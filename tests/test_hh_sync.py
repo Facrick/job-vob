@@ -10,13 +10,19 @@ from core.scraper._negotiations import _NegotiationsMixin
 # ── map_hh_status ────────────────────────────────────────────────────────────
 
 def test_map_offer():
-    assert map_hh_status("оффер") == VacancyStatus.OFFER
+    assert map_hh_status("вам предложили работу") == VacancyStatus.OFFER
     assert map_hh_status("Предложение о работе") == VacancyStatus.OFFER
+    assert map_hh_status("job offer") == VacancyStatus.OFFER
+
+def test_map_offer_word_no_false_positive():
+    """Слово «оффер» само по себе не должно давать статус — встречается в описаниях."""
+    assert map_hh_status("оффер") is None
 
 def test_map_rejected():
+    assert map_hh_status("вам отказали") == VacancyStatus.REJECTED
     assert map_hh_status("отказ") == VacancyStatus.REJECTED
-    assert map_hh_status("кандидат не подошел") == VacancyStatus.REJECTED   # е-версия
-    assert map_hh_status("кандидат не подошёл") == VacancyStatus.REJECTED   # ё-версия
+    assert map_hh_status("кандидат не подошел") == VacancyStatus.REJECTED
+    assert map_hh_status("кандидат не подошёл") == VacancyStatus.REJECTED
 
 def test_map_interview():
     assert map_hh_status("приглашение на интервью") == VacancyStatus.INTERVIEW
@@ -24,9 +30,13 @@ def test_map_interview():
     assert map_hh_status("телефонное интервью") == VacancyStatus.INTERVIEW
 
 def test_map_applied():
+    assert map_hh_status("вы откликнулись") == VacancyStatus.APPLIED
     assert map_hh_status("ваш отклик рассматривается") == VacancyStatus.APPLIED
     assert map_hh_status("отклик отправлен") == VacancyStatus.APPLIED
     assert map_hh_status("просмотрен работодателем") == VacancyStatus.APPLIED
+
+def test_map_can_apply():
+    assert map_hh_status("можно откликнуться") == VacancyStatus.DISCOVERED
 
 def test_map_empty_returns_none():
     assert map_hh_status("") is None
@@ -79,11 +89,15 @@ JOB_DESC_HTML = """
 
 def test_no_false_positive_from_description():
     """Слова «собеседование» и «интервью» в описании вакансии
-    не должны давать ненулевой статус для неоткликнутой вакансии."""
+    не должны давать статус interview/applied для неоткликнутой вакансии.
+    При наличии кнопки «Откликнуться» — статус «можно откликнуться» (→ DISCOVERED).
+    """
     parser = _make_parser()
     result = parser._check_vacancy_response_html(JOB_DESC_HTML, "12345")
-    assert result["hh_status"] == "", (
-        f"Ложное срабатывание: hh_status='{result['hh_status']}' "
+    # Статус НЕ должен быть interview или applied — только discovered или пусто
+    mapped = map_hh_status(result["hh_status"])
+    assert mapped not in (VacancyStatus.INTERVIEW, VacancyStatus.APPLIED, VacancyStatus.OFFER), (
+        f"Ложное срабатывание: hh_status='{result['hh_status']}' → {mapped} "
         "для вакансии без отклика"
     )
     assert result["title"] == "QA Engineer"
@@ -109,20 +123,46 @@ def test_detects_applied_status_via_data_qa():
     assert map_hh_status(result["hh_status"]) == VacancyStatus.APPLIED
 
 
-# ── sync_negotiations: понижение статуса теперь разрешено ────────────────────
+# ── sync_negotiations: синк двигает статус только ВПЕРЁД ──────────────────────
 
-def test_sync_allows_status_downgrade(tmp_path):
-    """Если hh.ru показывает более низкий статус — CRM обновляется.
-    Вакансия может переоткрыться, отклик сброситься."""
+def test_sync_does_not_downgrade(tmp_path):
+    """Страница вакансии hh.ru не отражает отклик → парсер может вернуть более
+    ранний этап. Это НЕ должно откатывать реальный статус назад."""
     repo = VacancyRepository(db_path=str(tmp_path / "test.db"))
     repo.save_vacancies([{
         "id": "100", "title": "Dev", "company": "Co",
-        "status": "interview",  # был interview
+        "status": "interview",
     }])
-    # hh.ru теперь показывает только applied
+    # hh.ru показывает более ранний этап (applied) — откат запрещён.
     negotiations = [{"vacancy_id": "100", "hh_status": "ваш отклик рассматривается",
                      "title": "Dev", "company": "Co"}]
     result = sync_negotiations(repo, negotiations)
+    assert len(result.updated) == 0
+    assert result.skipped_back == 1
+    assert repo.get_vacancy_by_id("100")["status"] == "interview"
+
+
+def test_sync_moves_forward(tmp_path):
+    """Более поздний этап с hh.ru применяется (discovered → applied)."""
+    repo = VacancyRepository(db_path=str(tmp_path / "test.db"))
+    repo.save_vacancies([{
+        "id": "101", "title": "Dev", "company": "Co", "status": "discovered",
+    }])
+    negotiations = [{"vacancy_id": "101", "hh_status": "ваш отклик рассматривается",
+                     "title": "Dev", "company": "Co"}]
+    result = sync_negotiations(repo, negotiations)
     assert len(result.updated) == 1
-    assert result.updated[0]["new"] == "applied"
-    assert repo.get_vacancy_by_id("100")["status"] == "applied"
+    assert repo.get_vacancy_by_id("101")["status"] == "applied"
+
+
+def test_sync_terminal_always_applies(tmp_path):
+    """Отказ/оффер работодателя применяются всегда, даже «назад» по рангу."""
+    repo = VacancyRepository(db_path=str(tmp_path / "test.db"))
+    repo.save_vacancies([{
+        "id": "102", "title": "Dev", "company": "Co", "status": "interview",
+    }])
+    negotiations = [{"vacancy_id": "102", "hh_status": "вам отказали",
+                     "title": "Dev", "company": "Co"}]
+    result = sync_negotiations(repo, negotiations)
+    assert len(result.updated) == 1
+    assert repo.get_vacancy_by_id("102")["status"] == "rejected"
