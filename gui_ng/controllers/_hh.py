@@ -1,6 +1,7 @@
 """Интеграция с hh.ru: авторизация и синхронизация статусов."""
 import asyncio
 import logging
+import time
 
 from nicegui import run, ui
 
@@ -11,6 +12,39 @@ from core.parser import HHParser
 class _HHMixin:
     """Методы проверки авторизации на hh.ru и синхронизации статусов откликов."""
 
+    # Сколько секунд доверять закэшированному статусу авторизации.
+    _HH_AUTH_TTL = 1800  # 30 минут
+
+    async def get_hh_auth(self, *, force: bool = False) -> bool:
+        """Единый источник статуса авторизации hh.ru для всех вкладок.
+
+        Возвращает закэшированный результат, если он свежее _HH_AUTH_TTL,
+        иначе поднимает headless-браузер и перепроверяет. Кэш общий (живёт на
+        self), поэтому CRM и Аналитика всегда видят один и тот же статус.
+        """
+        fresh = (
+            self._hh_auth_cached is not None
+            and (time.monotonic() - self._hh_auth_checked_at) < self._HH_AUTH_TTL
+        )
+        if not force and fresh:
+            return self._hh_auth_cached
+
+        logged_in = await run.io_bound(HHParser().check_auth_status)
+        self._hh_auth_cached = logged_in
+        self._hh_auth_checked_at = time.monotonic()
+        return logged_in
+
+    def _mark_hh_authed(self) -> None:
+        """Помечает сессию как авторизованную (после успешного ручного входа)."""
+        self._hh_auth_cached = True
+        self._hh_auth_checked_at = time.monotonic()
+
+    # Стили для лампочки в CRM-баре (только цвет точки)
+    _DOT_ON   = "color:#22c55e;font-size:14px;cursor:default"
+    _DOT_OFF  = "color:#f87171;font-size:14px;cursor:default"
+    _DOT_WAIT = "color:#71717a;font-size:14px;cursor:default"
+
+    # Стили для текстового badge в Настройках
     _AUTH_STYLE_ON  = (
         "font-size:11px;font-weight:600;letter-spacing:.02em;"
         "padding:3px 8px;border-radius:6px;cursor:default;"
@@ -28,31 +62,59 @@ class _HHMixin:
     )
 
     def _set_hh_auth_ui(self, logged_in: bool) -> None:
-        badge = self.el["hh_auth_badge"]
-        btn   = self.el["btn_hh_login"]
-        if logged_in:
-            badge.set_text("⬤  hh.ru  авторизован")
-            badge.style(self._AUTH_STYLE_ON)
-            btn.set_visibility(False)
-        else:
-            badge.set_text("⬤  hh.ru  не авторизован")
-            badge.style(self._AUTH_STYLE_OFF)
-            btn.set_visibility(True)
+        # Лампочка в CRM-баре
+        if "hh_auth_badge" in self.el:
+            dot = self.el["hh_auth_badge"]
+            dot.style(self._DOT_ON if logged_in else self._DOT_OFF)
+        # Кнопка «Войти» в CRM-баре
+        if "btn_hh_login" in self.el:
+            self.el["btn_hh_login"].set_visibility(not logged_in)
+        # Текстовый badge в Настройках
+        if "hh_auth_badge_s" in self.el:
+            badge_s = self.el["hh_auth_badge_s"]
+            if logged_in:
+                badge_s.set_text("⬤  авторизован")
+                badge_s.style(self._AUTH_STYLE_ON)
+            else:
+                badge_s.set_text("⬤  не авторизован")
+                badge_s.style(self._AUTH_STYLE_OFF)
+        # Кнопка «Войти» в Настройках
+        if "btn_hh_login_s" in self.el:
+            self.el["btn_hh_login_s"].set_visibility(not logged_in)
+
+    def _client_alive(self) -> bool:
+        from nicegui.client import Client
+        client_id = getattr(self, "_client_id", None)
+        return client_id is None or client_id in Client.instances
 
     async def _check_hh_auth_async(self) -> None:
-        self.el["hh_auth_badge"].set_text("⬤  hh.ru  проверка…")
-        self.el["hh_auth_badge"].style(self._AUTH_STYLE_WAIT)
+        if not self._client_alive():
+            return
+
+        # Ставим «проверка…» на оба badge
+        if "hh_auth_badge" in self.el:
+            self.el["hh_auth_badge"].style(self._DOT_WAIT)
+        if "hh_auth_badge_s" in self.el:
+            self.el["hh_auth_badge_s"].set_text("⬤  проверка…")
+            self.el["hh_auth_badge_s"].style(self._AUTH_STYLE_WAIT)
         try:
-            logged_in = await run.io_bound(HHParser().check_auth_status)
+            logged_in = await self.get_hh_auth(force=self._hh_auth_force_recheck)
+            self._hh_auth_force_recheck = False
+            if not self._client_alive():
+                return
             self._set_hh_auth_ui(logged_in)
             logging.info(f"🔐 Статус hh.ru: {'авторизован' if logged_in else 'не авторизован'}")
         except Exception as ex:
             logging.warning(f"[Auth] Не удалось проверить статус hh.ru: {ex}")
-            self.el["hh_auth_badge"].set_text("⬤  hh.ru  ошибка проверки")
-            self.el["hh_auth_badge"].style(self._AUTH_STYLE_WAIT)
+            if not self._client_alive():
+                return
+            if "hh_auth_badge_s" in self.el:
+                self.el["hh_auth_badge_s"].set_text("⬤  ошибка проверки")
+                self.el["hh_auth_badge_s"].style(self._AUTH_STYLE_WAIT)
 
     def recheck_hh_auth(self) -> None:
-        """Ручной перезапуск проверки авторизации (кнопка ↺)."""
+        """Ручной перезапуск проверки авторизации (кнопка ↺) — игнорирует кэш."""
+        self._hh_auth_force_recheck = True
         ui.timer(0.01, self._check_hh_auth_async, once=True)
 
     _AUTOSYNC_INTERVAL = 3600  # секунд (1 час)
@@ -240,9 +302,12 @@ class _HHMixin:
         """Открывает браузер для ручного входа, затем перепроверяет статус."""
         async def _login_and_recheck():
             try:
-                self.el["btn_hh_login"].disable()
-                self.el["hh_auth_badge"].set_text("⬤  hh.ru  выполняется вход…")
-                self.el["hh_auth_badge"].style(self._AUTH_STYLE_WAIT)
+                for key in ("btn_hh_login", "btn_hh_login_s"):
+                    if key in self.el:
+                        self.el[key].disable()
+                if "hh_auth_badge_s" in self.el:
+                    self.el["hh_auth_badge_s"].set_text("⬤  выполняется вход…")
+                    self.el["hh_auth_badge_s"].style(self._AUTH_STYLE_WAIT)
                 from playwright.sync_api import sync_playwright
                 def _do_login():
                     with sync_playwright() as p:
@@ -255,6 +320,16 @@ class _HHMixin:
                     self._set_hh_auth_ui(False)
                     self._show_error("Авторизация отменена или не завершена.")
             except Exception as ex:
-                self._show_error(f"Ошибка входа: {ex}")
-                self.el["btn_hh_login"].enable()
+                msg = str(ex)
+                if "XServer" in msg or "DISPLAY" in msg or "headed browser" in msg or "headless" in msg.lower():
+                    self._show_error(
+                        "Вход через браузер недоступен в Docker-контейнере без X Server. "
+                        "Войдите в hh.ru локально (запустив приложение на хосте) — "
+                        "сессия сохранится в data/browser_user_data и подхватится контейнером."
+                    )
+                else:
+                    self._show_error(f"Ошибка входа: {ex}")
+                for key in ("btn_hh_login", "btn_hh_login_s"):
+                    if key in self.el:
+                        self.el[key].enable()
         ui.timer(0.01, _login_and_recheck, once=True)

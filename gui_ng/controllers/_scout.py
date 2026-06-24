@@ -47,11 +47,16 @@ class _ScoutMixin:
         vacancies = self.repo.get_vacancies_filtered(status_filter)
         all_rows = [self._row_dict(v) for v in vacancies]
         self._crm_all_rows = all_rows
-        self.el["table"].rows = self._filter_crm_rows(all_rows)
+        filtered = self._filter_crm_rows(all_rows)
+        self.el["table"].rows = filtered
         self.el["table"].update()
+        if "table_count" in self.el:
+            n = len(filtered)
+            self.el["table_count"].set_text(f"{n} вак." if n else "Нет вакансий")
         self._update_funnel_counters()
         self._render_funnel()
         self.refresh_letter_vacancy_select()
+        self.refresh_interview_vacancy_select()
 
     def _filter_crm_rows(self, rows: list[dict]) -> list[dict]:
         """Фильтрует строки таблицы по тексту из поля crm_search."""
@@ -85,29 +90,39 @@ class _ScoutMixin:
         metrics = self.el.get("funnel_metrics")
         if not metrics:
             return
-        active = sum(counts.get(k, 0) for k in ("processed", "applied", "interview"))
         values = {
-            "total":     len(all_vac),
-            "new":       counts.get("discovered", 0),
-            "active":    active,
-            "interview": counts.get("interview", 0),
-            "offer":     counts.get("offer", 0),
+            "total":      len(all_vac),
+            "discovered": counts.get("discovered", 0),
+            "processed":  counts.get("processed", 0),
+            "applied":    counts.get("applied", 0),
+            "interview":  counts.get("interview", 0),
+            "offer":      counts.get("offer", 0),
+            "rejected":   counts.get("rejected", 0),
         }
-        for key, label in values.items():
+        for key, val in values.items():
             lbl = metrics.get(key)
             if lbl is not None:
-                lbl.set_text(str(label))
+                lbl.set_text(str(val))
 
-    def on_row_click(self, e):
-        try:
-            row = e.args[1]
-        except (IndexError, TypeError):
-            return
-        self.select_vacancy(row.get("id"))
+    def on_row_click(self, row: dict):
+        """Клик по строке VacancyList — приходит сам row-dict."""
+        if row:
+            self.select_vacancy(row.get("id"))
+
+    def close_detail(self):
+        self.selected_vacancy_id = None
+        if "detail_drawer" in self.el:
+            self.el["detail_drawer"].set_visibility(False)
+        if "table" in self.el:
+            self.el["table"].set_active(None)
 
     def select_vacancy(self, vid: str):
         from core.utils import vacancy_desc_to_html
         self.selected_vacancy_id = vid
+        if "table" in self.el:
+            self.el["table"].set_active(vid)
+        if "detail_drawer" in self.el:
+            self.el["detail_drawer"].set_visibility(True)
         v = self.repo.get_vacancy_by_id(vid)
         if not v:
             return
@@ -328,52 +343,72 @@ class _ScoutMixin:
         reached_applied   = n_applied + n_interview + n_offer
         reached_interview = n_interview + n_offer
 
-        metrics = [
-            ("Всего",         total,       "#42a5f5"),
-            ("Откликнулся",   n_applied,   "#ff8f00"),
-            ("Собеседования", n_interview, "#ab47bc"),
-            ("Офферы",        n_offer,     "#66bb6a"),
-            ("Отказы",        n_rejected,  "#ef5350"),
+        # Цвета берём из единой статусной палитры темы (STATUS_STYLE),
+        # а не из разрозненного «материалового» хардкода — так аналитика
+        # звучит в тон CRM-таблице и бейджам статусов.
+        c_total = "#60a5fa"  # нейтральный синий для агрегата «Всего»
+        s = STATUS_STYLE
+        # KPI-плашки крупными цифрами (стиль референса: 224 / Total Projects)
+        kpis = [
+            ("Всего",         total,       c_total,         "inventory_2"),
+            ("Откликнулся",   n_applied,   s["applied"][1],  "send"),
+            ("Собеседования", n_interview, s["interview"][1],"groups"),
+            ("Офферы",        n_offer,     s["offer"][1],    "verified"),
+            ("Отказы",        n_rejected,  s["rejected"][1], "block"),
         ]
         with box:
-            with ui.row().classes("gap-3 flex-wrap"):
-                for label, value, color in metrics:
-                    if value == 0 and label not in ("Всего",):
+            with ui.row().classes("gap-2 flex-wrap w-full"):
+                for label, value, color, icon in kpis:
+                    if value == 0 and label != "Всего":
                         continue
-                    with ui.card().style(
-                        f"background-color:{color}1f;padding:10px 14px"
-                    ).props("flat"):
-                        ui.label(str(value)).style(
-                            f"font-size:22px;font-weight:700;color:{color}"
-                        )
-                        ui.label(label).classes("text-xs vob-muted")
+                    kpi = ui.element("div").classes("vob-kpi").style(
+                        f"--vob-accent:{color}"
+                    )
+                    with kpi:
+                        with ui.element("div").classes("vob-kpi-icon"):
+                            ui.icon(icon)
+                        with ui.element("div").classes("vob-kpi-text"):
+                            ui.label(label).classes("vob-kpi-label")
+                            ui.label(str(value)).classes("vob-kpi-value")
             ui.separator()
+            # Этапы воронки: градиентные бары в тон каждого статуса
             stages = [
-                ("Новые",            n_discovered, "#42a5f5"),
-                ("Письмо готово",    n_processed,  "#5c6bc0"),
-                ("Отклик отправлен", n_applied,    "#ff8f00"),
-                ("Собеседование",    n_interview,  "#ab47bc"),
-                ("Оффер",            n_offer,      "#66bb6a"),
-                ("Отказ",            n_rejected,   "#ef5350"),
+                ("Новые",            n_discovered, s["discovered"][1]),
+                ("Письмо готово",    n_processed,  s["processed"][1]),
+                ("Отклик отправлен", n_applied,    s["applied"][1]),
+                ("Собеседование",    n_interview,  s["interview"][1]),
+                ("Оффер",            n_offer,      s["offer"][1]),
+                ("Отказ",            n_rejected,   s["rejected"][1]),
             ]
             for label, count, color in stages:
                 ratio = count / total if total else 0
                 with ui.column().classes("w-full gap-1"):
-                    with ui.row().classes("w-full justify-between"):
-                        ui.label(label).classes("font-medium")
+                    with ui.row().classes("w-full justify-between items-center"):
+                        with ui.row().classes("items-center gap-2 no-wrap"):
+                            ui.element("div").style(
+                                f"width:8px;height:8px;border-radius:99px;"
+                                f"background:{color};flex:0 0 auto"
+                            )
+                            ui.label(label).classes("font-medium text-sm")
                         ui.label(
-                            f"{count}  ·  {round(ratio * 100)}% от всех"
+                            f"{count}  ·  {round(ratio * 100)}%"
                         ).classes("text-xs vob-muted")
-                    ui.linear_progress(value=ratio, show_value=False).props(
-                        f"color={_q(color)}"
-                    )
+                    # Трек + заливка градиентом status→акцент темы
+                    with ui.element("div").style(
+                        "background:#ffffff0d;border-radius:99px;height:8px;width:100%"
+                    ):
+                        ui.element("div").style(
+                            f"height:8px;border-radius:99px;"
+                            f"background:linear-gradient(90deg,{color},#a78bfa);"
+                            f"width:{max(2, ratio * 100):.1f}%;transition:width .35s"
+                        )
             if reached_applied:
                 resp = round(reached_interview / reached_applied * 100)
                 off  = round(n_offer / reached_interview * 100) if reached_interview else 0
                 ui.label(
                     f"Отклик → собеседование: {resp}%      "
                     f"Собеседование → оффер: {off}%"
-                ).style("color:#7986cb;font-weight:500;font-size:12px")
+                ).style("color:#a1a1aa;font-weight:500;font-size:12px")
 
     async def handle_search(self):
         """Запускает поиск. Если есть непросмотренные «Новые» вакансии — спрашивает подтверждение."""
@@ -423,24 +458,48 @@ class _ScoutMixin:
 
         await self._do_search()
 
+    def handle_stop_search(self) -> None:
+        """Устанавливает флаг отмены — текущий поиск завершится после текущей вакансии."""
+        self._search_cancelled = True
+        self.el["btn_stop_search"].disable()
+        self.el["search_status"].set_text("Останавливаю поиск…")
+
     async def _do_search(self):
         """Фактический запуск поиска вакансий на hh.ru."""
-        keyword = (self.el["input_keyword"].value or "").strip() or "QA Engineer"
+        keyword = (self.el["input_keyword"].value or "").strip()
+        if not keyword:
+            ui.notify("Введите название должности или роли.", type="warning")
+            return
         period = self.el["combo_period"].value or "7"
-        exp = self.el["combo_exp"].value or "between1And3"
+        # multiple-селекты возвращают список. Пустой список = фильтр не задан
+        # (hh.ru вернёт любой опыт / любой формат).
+        exp = self.el["combo_exp"].value or []
         area = self.el["combo_area"].value or "113"
-        sched_val = self.el["combo_schedule"].value
-        schedule = sched_val if sched_val is not None else ""
-        expand = bool(self.el["toggle_expand"].value)
+        schedule = self.el["combo_schedule"].value or []
+        # Переключатель «Показывать браузер» → headless=False (видимое окно)
+        show_browser = bool(
+            self.el.get("toggle_visible_browser")
+            and self.el["toggle_visible_browser"].value
+        )
+        # Роль выбрана из списка → ищем по всей группе синонимов.
+        # Произвольный ввод (нет в словаре) → expand_query вернёт только сам запрос.
+        expand = True
 
+        self._search_cancelled = False
         progress = self.el["search_progress"]
         status = self.el["search_status"]
         progress.set_visibility(True)
         status.set_visibility(True)
         status.set_text("Запускаю поиск и открываю hh.ru...")
         self.el["btn_search"].disable()
+        self.el["btn_stop_search"].set_visibility(True)
+        self.el["btn_stop_search"].enable()
 
         loop = asyncio.get_running_loop()
+
+        # Определяем текущий активный фильтр воронки, чтобы обновлять
+        # таблицу в реальном времени согласно нему
+        current_status_filter = self.el["status_filter"].value or "all"
 
         def on_progress(idx, total, label=""):
             def upd():
@@ -448,25 +507,40 @@ class _ScoutMixin:
                 status.set_text(f"Обработка {idx}/{total}: {label}")
             loop.call_soon_threadsafe(upd)
 
+        search_stats: dict = {}
+        crm_counts = {"added": 0, "skipped_existing": 0}
+
         def on_vacancy(v: dict):
+            if self._search_cancelled:
+                return
+            existing = self.repo.get_vacancy_by_id(str(v.get("id") or ""))
+            if existing and existing.get("status", "discovered") != "discovered":
+                # Вакансия уже в воронке с продвинутым статусом — не перезаписываем.
+                crm_counts["skipped_existing"] += 1
+                return
             v["match_score"] = compute_match_score(self._cached_resume, v)
             v.setdefault("status", "discovered")
             self.repo.save_vacancies([v])
+            crm_counts["added"] += 1
 
             def upd():
-                self.el["table"].add_row(self._row_dict(v))
                 self._update_funnel_counters()
+                # Обновляем таблицу в реальном времени — показываем новую вакансию
+                # если фильтр «Все» или «Новые»
+                if current_status_filter in ("all", "discovered"):
+                    row = self._row_dict(v)
+                    # add_row сам дедуплицирует по id и перерисовывает список.
+                    self.el["table"].add_row(row)
+                    if self._crm_all_rows is not None and row["id"] not in {
+                        r["id"] for r in self._crm_all_rows
+                    }:
+                        self._crm_all_rows.append(row)
             loop.call_soon_threadsafe(upd)
 
-        def job():
+        def prepare():
+            """Блокирующая подготовка к поиску (sqlite + чтение резюме)."""
             self.repo.clear_discovered_vacancies()
             self._cached_resume = self._safe_resume_text()
-            SearchService().search(
-                text=keyword, expand=expand,
-                period=int(period), area=int(area), experience=exp,
-                schedule=schedule, page_limit=3,
-                progress_callback=on_progress, on_vacancy=on_vacancy,
-            )
 
         try:
             # Сбрасываем текстовый фильтр, чтобы новые вакансии не скрывались
@@ -481,9 +555,25 @@ class _ScoutMixin:
             self.el["table"].rows = [self._row_dict(v) for v in kept]
             self.el["table"].update()
             logging.info("🧹 Удаляю необработанные вакансии (статус «Новая»)…")
-            await run.io_bound(job)
-            logging.info("💾 Поиск завершён.")
+            await run.io_bound(prepare)
+            if not self._search_cancelled:
+                # Async-поиск крутится прямо в event loop NiceGUI; детальный
+                # разбор карточек идёт параллельно (несколько вкладок).
+                concurrency = int(self.config.get("search_concurrency") or 6)
+                await SearchService().search(
+                    text=keyword, expand=expand,
+                    period=int(period), area=int(area), experience=exp,
+                    schedule=schedule, page_limit=5, concurrency=concurrency,
+                    progress_callback=on_progress, on_vacancy=on_vacancy,
+                    should_cancel=lambda: self._search_cancelled,
+                    headless=not show_browser, stats=search_stats,
+                )
+            if self._search_cancelled:
+                logging.info("🛑 Поиск остановлен пользователем.")
+            else:
+                logging.info("💾 Поиск завершён.")
             self.refresh_table_data()
+            self._show_search_summary(search_stats, crm_counts, self._search_cancelled)
         except Exception as ex:
             logging.error(f"[BG] Поиск завершился с ошибкой: {ex}")
             self._show_error(str(ex))
@@ -491,3 +581,61 @@ class _ScoutMixin:
             progress.set_visibility(False)
             status.set_visibility(False)
             self.el["btn_search"].enable()
+            self.el["btn_stop_search"].set_visibility(False)
+            self._search_cancelled = False
+
+    def _show_search_summary(
+        self, stats: dict, crm: dict, cancelled: bool
+    ) -> None:
+        """Показывает итоги поиска: найдено / дублей / отсеяно / добавлено в CRM."""
+        parsed   = stats.get("parsed", 0)
+        dups     = stats.get("duplicates", 0)
+        filtered = stats.get("filtered", 0)
+        added    = crm.get("added", 0)
+        skipped  = crm.get("skipped_existing", 0)
+
+        # Если парсер вообще ничего не разобрал (например, блокировка) — не молчим.
+        if parsed == 0 and not cancelled:
+            ui.notify(
+                "Поиск завершён, но вакансий не найдено. "
+                "Проверьте запрос/фильтры или возможную блокировку hh.ru.",
+                type="warning", icon="search_off", timeout=6000,
+            )
+            return
+
+        rows = [
+            ("search",       "Разобрано вакансий",   parsed,   "#60a5fa"),
+            ("filter_alt",   "Дублей отброшено",     dups,     "#a78bfa"),
+            ("block",        "Отсеяно по названию",  filtered, "#f59e0b"),
+            ("playlist_add", "Добавлено в CRM",       added,    "#4ade80"),
+        ]
+        if skipped:
+            rows.append(
+                ("history", "Уже в работе (пропущено)", skipped, "#71717a")
+            )
+
+        with ui.dialog() as dlg, ui.card().style(
+            "background:#18181b;border:1px solid #27272a;min-width:380px"
+        ):
+            with ui.row().classes("items-center gap-2 w-full"):
+                ui.icon(
+                    "flag" if cancelled else "check_circle",
+                    color="warning" if cancelled else "positive",
+                )
+                ui.label(
+                    "Поиск остановлен" if cancelled else "Поиск завершён"
+                ).classes("text-base font-semibold").style("color:#fafafa")
+            ui.separator().style("opacity:.3")
+            with ui.column().classes("gap-2 w-full"):
+                for icon, label, value, color in rows:
+                    with ui.row().classes("items-center gap-3 w-full no-wrap"):
+                        ui.icon(icon).style(f"color:{color};font-size:18px")
+                        ui.label(label).classes("text-sm flex-grow").style(
+                            "color:#d4d4d8"
+                        )
+                        ui.label(str(value)).classes("text-base font-bold").style(
+                            f"color:{color}"
+                        )
+            with ui.row().classes("justify-end w-full"):
+                ui.button("Понятно", on_click=dlg.close).props("flat no-caps")
+        dlg.open()

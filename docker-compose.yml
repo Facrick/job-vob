@@ -1,0 +1,35 @@
+services:
+  allure:
+    image: frankescobar/allure-docker-service
+    ports:
+      - "5050:5050"
+    volumes:
+      - ./allure-results:/app/allure-results
+      - ./allure-reports:/app/default-reports
+    environment:
+      CHECK_RESULTS_EVERY_SECONDS: 3
+      KEEP_HISTORY: 1
+
+  jenkins:
+    build:
+      context: .
+      dockerfile: docker_config/Dockerfile.jenkins
+    ports:
+      - "8081:8080"
+    volumes:
+      - ./jenkins-data:/var/jenkins_home
+      - C:\Users\ferni\PycharmProjects\job-vob:/workspace
+
+  app:
+    build:
+      context: .
+      dockerfile: docker_config/Dockerfile.app
+    ports:
+      - "8080:8080"
+    env_file: 
+        - .env
+    volumes:
+        - ./data:/app/data
+
+
+

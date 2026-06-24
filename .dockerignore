@@ -1,0 +1,9 @@
+dist
+.venv
+jenkins-data
+build
+__pycache__
+allure-results
+allure-reports
+.env
+data/browser_user_data

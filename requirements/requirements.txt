@@ -1,0 +1,25 @@
+# UI (NiceGUI — нативное окно через pywebview)
+nicegui>=3.0
+pywebview>=5.0
+
+# Парсинг hh.ru
+playwright>=1.42.0
+beautifulsoup4>=4.12.3
+lxml>=5.3.0
+
+# Генерация писем (Groq или OpenRouter)
+groq>=0.4.0
+openai>=1.0.0
+python-dotenv>=1.0.1
+
+# Чтение резюме (PDF, DOCX, TXT) и графики аналитики
+pypdf>=4.2.0
+python-docx>=1.1.0
+matplotlib>=3.9.0
+pillow>=11.0.0
+
+pytest>=9.0.0
+allure-pytest>=2.16.0
+pytest-playwright>=0.4.0
+pytest-rerunfailures>=14.0
+

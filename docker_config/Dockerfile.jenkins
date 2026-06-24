@@ -1,0 +1,15 @@
+FROM jenkins/jenkins:lts
+USER root
+RUN apt-get update && apt-get install -y python3 python3-pip python3-venv
+COPY requirements/requirements.txt /tmp/requirements.txt
+RUN pip3 install -r /tmp/requirements.txt --break-system-packages
+RUN apt-get install -y wget unzip && \
+    wget -q https://github.com/allure-framework/allure2/releases/download/2.29.0/allure-2.29.0.tgz && \
+    tar -zxf allure-2.29.0.tgz -C /opt && \
+    ln -s /opt/allure-2.29.0/bin/allure /usr/local/bin/allure && \
+    rm allure-2.29.0.tgz
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN python3 -m playwright install chromium --with-deps
+USER jenkins
+
+

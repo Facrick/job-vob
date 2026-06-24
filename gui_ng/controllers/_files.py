@@ -1,6 +1,7 @@
 """Работа с файлами: нативный диалог pywebview, загрузка резюме, экспорт."""
 import logging
 import shutil
+from pathlib import Path
 
 import webview
 from nicegui import app
@@ -32,7 +33,7 @@ class _FilesMixin:
             return None
         try:
             result = await win.create_file_dialog(
-                webview.OPEN_DIALOG, allow_multiple=False, file_types=file_types
+                webview.FileDialog.OPEN, allow_multiple=False, file_types=file_types
             )
         except Exception as ex:
             logging.error(f"[FileDialog] open: {ex}")
@@ -53,7 +54,7 @@ class _FilesMixin:
             return None
         try:
             result = await win.create_file_dialog(
-                webview.SAVE_DIALOG, save_filename=default_name
+                webview.FileDialog.SAVE, save_filename=default_name
             )
         except Exception as ex:
             logging.error(f"[FileDialog] save: {ex}")
@@ -64,15 +65,24 @@ class _FilesMixin:
         return result if isinstance(result, str) else result[0]
 
     async def handle_resume_upload(self):
-        path = await self._pick_open_file(("Резюме PDF (*.pdf)",))
+        path = await self._pick_open_file((
+            "Резюме (*.pdf;*.docx;*.doc;*.txt;*.rtf)",
+            "PDF (*.pdf)",
+            "Word (*.docx;*.doc)",
+            "Текст (*.txt;*.rtf)",
+        ))
         if not path:
             return
-        dest = user_path("resume.pdf")
+        src = Path(path)
+        dest = user_path(f"resume{src.suffix.lower()}")
         try:
-            shutil.copyfile(path, dest)
+            shutil.copyfile(src, dest)
             self.resume.file_path = dest
             self.resume._cached_text = None
+            # Сохраняем оригинальное имя файла чтобы показывать пользователю
+            self.config.set("resume_original_name", src.name)
             self._refresh_resume_label()
+            self._refresh_settings_ui()
             self._recompute_all_match_scores()
             self._try_autofill_salary()
             self.refresh_table_data()

@@ -9,6 +9,28 @@ from gui_ng.controllers._helpers import _q
 class _InterviewMixin:
     """Методы mock-собеседования: запуск сессии, чат, оценка, отчёт."""
 
+    def refresh_interview_vacancy_select(self) -> None:
+        """Обновляет список вакансий в селекте вкладки Интервью."""
+        sel = self.el.get("interview_vacancy_select")
+        if not sel:
+            return
+        vacancies = self.repo.get_vacancies_filtered("all")
+        options = {
+            v["id"]: f"{v.get('company', '—')} — {v.get('title', '—')}"
+            for v in vacancies if v.get("id")
+        }
+        sel.options = options
+        sel.update()
+        if self.selected_vacancy_id and self.selected_vacancy_id in options:
+            sel.set_value(self.selected_vacancy_id)
+
+    def handle_interview_vacancy_select(self, e) -> None:
+        """Обрабатывает выбор вакансии прямо из вкладки Интервью."""
+        vid = e.value
+        if not vid:
+            return
+        self.select_vacancy(vid)
+
     async def handle_start_mock(self):
         if not self.selected_vacancy_id:
             self._show_error("Выберите вакансию.")
@@ -25,6 +47,8 @@ class _InterviewMixin:
         self.mock_reviews = {}   # index ответа кандидата → разбор {score, theory, …}
         self._clear_report()
         self.el["btn_start"].disable()
+        self._show_progress("ИИ-интервьюер готовит первый вопрос…",
+                            key_progress="interview_progress", key_status="interview_status")
         try:
             reply = await run.io_bound(
                 self.interview_engine.generate_mock_reply, self.mock_chat_history
@@ -37,6 +61,8 @@ class _InterviewMixin:
             self._show_error(str(ex))
         finally:
             self.el["btn_start"].enable()
+            self._hide_progress(key_progress="interview_progress",
+                                key_status="interview_status")
 
     def _current_question(self) -> str:
         """Последний вопрос интервьюера (последняя реплика assistant)."""
@@ -56,6 +82,8 @@ class _InterviewMixin:
         self.el["input_chat"].set_value("")
         self._render_mock_chat()
         self.el["btn_send"].disable()
+        self._show_progress("ИИ анализирует ответ и готовит следующий вопрос…",
+                            key_progress="interview_progress", key_status="interview_status")
 
         v = self.repo.get_vacancy_by_id(self.selected_vacancy_id) if self.selected_vacancy_id else {}
         fmt = self.el["combo_format"].value or "tech"
@@ -89,6 +117,8 @@ class _InterviewMixin:
             self._show_error(str(ex))
         finally:
             self.el["btn_send"].enable()
+            self._hide_progress(key_progress="interview_progress",
+                                key_status="interview_status")
 
     async def handle_show_hint(self):
         question = self._current_question()
@@ -98,6 +128,8 @@ class _InterviewMixin:
         fmt = self.el["combo_format"].value or "tech"
         v = self.repo.get_vacancy_by_id(self.selected_vacancy_id) if self.selected_vacancy_id else {}
         self.el["btn_hint"].disable()
+        self._show_progress("ИИ генерирует подсказку…",
+                            key_progress="interview_progress", key_status="interview_status")
         try:
             hint = await run.io_bound(
                 self.interview_engine.get_hint, question, fmt, (v or {}).get("title", "")
@@ -107,6 +139,8 @@ class _InterviewMixin:
             self._show_error(str(ex))
         finally:
             self.el["btn_hint"].enable()
+            self._hide_progress(key_progress="interview_progress",
+                                key_status="interview_status")
 
     async def handle_show_model_answer(self):
         question = self._current_question()
@@ -116,6 +150,8 @@ class _InterviewMixin:
         fmt = self.el["combo_format"].value or "tech"
         v = self.repo.get_vacancy_by_id(self.selected_vacancy_id) if self.selected_vacancy_id else {}
         self.el["btn_model"].disable()
+        self._show_progress("ИИ формирует эталонный ответ…",
+                            key_progress="interview_progress", key_status="interview_status")
         try:
             data = await run.io_bound(
                 self.interview_engine.get_model_answer, question, fmt, (v or {}).get("title", "")
@@ -129,6 +165,8 @@ class _InterviewMixin:
             self._show_error(str(ex))
         finally:
             self.el["btn_model"].enable()
+            self._hide_progress(key_progress="interview_progress",
+                                key_status="interview_status")
 
     def _show_coach_dialog(self, title: str, *, hint_text: str = "",
                            model_answer: str = "", theory: str = ""):
@@ -155,6 +193,8 @@ class _InterviewMixin:
         v = self.repo.get_vacancy_by_id(self.selected_vacancy_id) if self.selected_vacancy_id else {}
         fmt = self.el["combo_format"].value or "tech"
         self.el["btn_evaluate"].disable()
+        self._show_progress("ИИ оценивает сессию интервью…",
+                            key_progress="interview_progress", key_status="interview_status")
         try:
             data = await run.io_bound(
                 self.interview_engine.evaluate_mock_interview,
@@ -165,19 +205,39 @@ class _InterviewMixin:
             self._show_error(str(ex))
         finally:
             self.el["btn_evaluate"].enable()
+            self._hide_progress(key_progress="interview_progress",
+                                key_status="interview_status")
 
     def handle_reset_mock(self):
         self.mock_chat_history = []
         self.mock_reviews = {}
         if self.selected_vacancy_id:
             self.repo.save_mock_interview(self.selected_vacancy_id, [])
-        self.el["chat_arena"].clear()
+        self._render_chat_placeholder()
         self.el["btn_evaluate"].set_visibility(False)
         self._clear_report()
+
+    def _render_chat_placeholder(self):
+        """Пустое состояние арены чата — до старта сессии."""
+        arena = self.el.get("chat_arena")
+        if arena is None:
+            return
+        arena.clear()
+        with arena:
+            with ui.column().classes(
+                "w-full h-full items-center justify-center gap-2"
+            ):
+                ui.icon("forum", size="40px").style("color:#3f3f46")
+                ui.label(
+                    "Выберите вакансию, формат и уровень, затем нажмите «Начать»."
+                ).classes("italic vob-muted text-sm text-center")
 
     def _render_mock_chat(self):
         arena = self.el.get("chat_arena")
         if arena is None:
+            return
+        if not self.mock_chat_history:
+            self._render_chat_placeholder()
             return
         reviews = getattr(self, "mock_reviews", {}) or {}
         arena.clear()

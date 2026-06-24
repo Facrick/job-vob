@@ -1,4 +1,6 @@
 """Тесты API-клиента hh.ru и оркестратора SearchService — офлайн (без сети/Playwright)."""
+import asyncio
+
 from core.api_client import HHApiClient
 from core.search_service import SearchService
 from core.utils import strip_html
@@ -80,60 +82,120 @@ def test_search_merges_details():
     assert "desc" in res[0]["description"]
 
 
-# ── SearchService: фолбэк ─────────────────────────────────────
-class _FakeApi:
-    def __init__(self, result=None, exc=None):
-        self.result, self.exc, self.called = result, exc, False
-
-    def search(self, **kw):
-        self.called = True
-        if self.exc:
-            raise self.exc
-        return self.result
-
-
+# ── SearchService: поиск идёт через Playwright-парсер ─────────
+# Официальный API hh.ru отключён (давал слишком мало вакансий) — единственный
+# источник теперь парсер. Тесты проверяют, что SearchService всегда зовёт его.
 class _FakeParser:
     def __init__(self, result):
-        self.result, self.called = result, False
+        self.result, self.called, self.kwargs = result, False, None
 
-    def parse_market(self, **kw):
+    async def parse_market_async(self, **kw):
         self.called = True
+        self.kwargs = kw
+        # Реальный парсер вызывает on_vacancy для каждой вакансии — SearchService
+        # фильтрует/дедуплицирует именно в этом колбэке. Воспроизводим это.
+        on_vacancy = kw.get("on_vacancy")
+        if on_vacancy:
+            for v in self.result:
+                on_vacancy(v)
         return self.result
 
 
-def _service(use_api, api, parser):
-    svc = SearchService(config=FakeConfig(use_official_api=use_api))
-    svc._make_api = lambda: api
+class _SyncSearch:
+    """Обёртка над SearchService.search, гоняющая async-метод через asyncio.run.
+
+    Позволяет писать обычные (не async) тесты без pytest-asyncio.
+    """
+
+    def __init__(self, svc):
+        self._svc = svc
+
+    def search(self, **kw):
+        return asyncio.run(self._svc.search(**kw))
+
+
+def _service(parser):
+    svc = SearchService(config=FakeConfig())
     svc._make_parser = lambda: parser
-    return svc
+    return _SyncSearch(svc)
 
 
 _KW = dict(text="QA", period=7, area=113, experience="between1And3", schedule="remote")
 
 
-def test_uses_api_when_ok():
-    api, parser = _FakeApi(result=[{"id": "1"}]), _FakeParser([{"id": "X"}])
-    res = _service(True, api, parser).search(**_KW)
-    assert res == [{"id": "1"}]
-    assert api.called and not parser.called
-
-
-def test_falls_back_on_error():
-    api, parser = _FakeApi(exc=RuntimeError("network")), _FakeParser([{"id": "P"}])
-    res = _service(True, api, parser).search(**_KW)
-    assert res == [{"id": "P"}]
-    assert api.called and parser.called
-
-
-def test_falls_back_on_empty():
-    api, parser = _FakeApi(result=[]), _FakeParser([{"id": "P"}])
-    res = _service(True, api, parser).search(**_KW)
-    assert res == [{"id": "P"}]
+def test_uses_parser():
+    parser = _FakeParser([{"id": "1", "title": "QA Engineer"}])
+    res = _service(parser).search(**_KW)
+    assert [v["id"] for v in res] == ["1"]
     assert parser.called
 
 
-def test_api_disabled_uses_parser():
-    api, parser = _FakeApi(result=[{"id": "1"}]), _FakeParser([{"id": "P"}])
-    res = _service(False, api, parser).search(**_KW)
-    assert res == [{"id": "P"}]
-    assert not api.called and parser.called
+def test_passes_should_cancel():
+    """should_cancel прокидывается в парсер — иначе кнопка «Стоп» не сработает."""
+    parser = _FakeParser([{"id": "1", "title": "QA Engineer"}])
+    flag = {"v": False}
+    _service(parser).search(**_KW, should_cancel=lambda: flag["v"])
+    assert "should_cancel" in parser.kwargs and callable(parser.kwargs["should_cancel"])
+
+
+def test_expand_dedups_by_id():
+    """expand=True по синонимам не должен дублировать вакансии по id."""
+    parser = _FakeParser([
+        {"id": "1", "title": "QA Engineer"},
+        {"id": "1", "title": "QA Engineer"},
+        {"id": "2", "title": "QA автотестер"},
+    ])
+    res = _service(parser).search(**_KW, expand=True)
+    assert [v["id"] for v in res] == ["1", "2"]
+
+
+def test_search_field_defaults_to_full_match():
+    """По умолчанию ищем как на hh.ru вручную (заголовок+компания+описание),
+    иначе находится в разы меньше вакансий."""
+    parser = _FakeParser([{"id": "1", "title": "QA Engineer"}])
+    _service(parser).search(text="QA")
+    assert parser.kwargs["search_field"] == "name,company_name,description"
+
+
+def test_headless_passed_through():
+    """Переключатель «Показывать браузер» прокидывается в парсер как headless."""
+    parser = _FakeParser([{"id": "1", "title": "QA Engineer"}])
+    _service(parser).search(text="QA", headless=False)
+    assert parser.kwargs["headless"] is False
+
+
+def test_filters_out_irrelevant_titles():
+    """Вакансии, где запрос встретился только в описании (не в названии), отсекаются."""
+    parser = _FakeParser([
+        {"id": "1", "title": "QA Engineer"},
+        {"id": "2", "title": "Курьер (знание Python приветствуется)"},
+        {"id": "3", "title": "Инженер по тестированию"},  # синоним QA
+    ])
+    res = _service(parser).search(text="QA Engineer", expand=True)
+    assert sorted(v["id"] for v in res) == ["1", "3"]
+
+
+def test_irrelevant_title_not_passed_to_on_vacancy():
+    """Отсеянная вакансия не должна сохраняться в БД (on_vacancy не вызывается)."""
+    parser = _FakeParser([
+        {"id": "1", "title": "QA Engineer"},
+        {"id": "2", "title": "Бариста"},
+    ])
+    saved: list[str] = []
+    _service(parser).search(text="QA", on_vacancy=lambda v: saved.append(v["id"]))
+    assert saved == ["1"]
+
+
+def test_search_fills_stats():
+    """stats-словарь заполняется счётчиками: разобрано / дубли / отсеяно / релевантно."""
+    parser = _FakeParser([
+        {"id": "1", "title": "QA Engineer"},      # релевантно
+        {"id": "1", "title": "QA Engineer"},      # дубль
+        {"id": "2", "title": "Бариста"},          # отсеяно по названию
+        {"id": "3", "title": "Тестировщик QA"},   # релевантно
+    ])
+    stats: dict = {}
+    _service(parser).search(text="QA", stats=stats)
+    assert stats == {
+        "parsed": 4, "duplicates": 1, "filtered": 1, "relevant": 2,
+    }

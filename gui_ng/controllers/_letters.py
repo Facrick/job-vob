@@ -4,7 +4,6 @@ import webbrowser
 
 from nicegui import run, ui
 
-from core.ai import LetterAnalyzer
 from core.parser import HHParser
 from core.utils import extract_salary_from_resume
 from gui_ng.controllers._helpers import _q
@@ -13,7 +12,7 @@ from gui_ng.controllers._helpers import _q
 class _LettersMixin:
     """Методы вкладки «Письма» + сопутствующие утилиты CRM."""
 
-    async def handle_generation(self):
+    async def handle_generation(self, btn_key: str = "btn_generate"):
         if not self.selected_vacancy_id:
             self._show_error("Выберите вакансию в таблице.")
             return
@@ -22,17 +21,11 @@ class _LettersMixin:
             self._show_error("Вакансия не найдена в базе.")
             return
         vid = self.selected_vacancy_id
-        btn = self.el["btn_generate"]
+        btn = self.el[btn_key]
+        original_text = btn.text
         btn.disable()
         btn.set_text("Генерирую…")
-        # Показываем прогресс-бар и статус
-        progress = self.el.get("letter_progress")
-        status_lbl = self.el.get("letter_status")
-        if progress:
-            progress.set_visibility(True)
-        if status_lbl:
-            status_lbl.set_text("ИИ пишет письмо…")
-            status_lbl.set_visibility(True)
+        self._show_progress("ИИ пишет письмо…")
         try:
             resume_text = self.resume.extract_text()
             response = await run.io_bound(
@@ -40,6 +33,11 @@ class _LettersMixin:
                 resume_text, v["title"], v["company"], v["description"],
             )
             letter = response.get("letter", "").strip()
+            if not letter:
+                self._show_error(
+                    "ИИ не вернул письмо (пустой ответ модели). Попробуйте ещё раз."
+                )
+                return
             recs = "\n".join(f"• {r}" for r in response.get("recommendations", []))
             self.repo.save_cover_letter(vid, letter, recs)
             if v["status"] == "discovered":
@@ -53,11 +51,8 @@ class _LettersMixin:
             self._show_error(str(ex))
         finally:
             btn.enable()
-            btn.set_text("ИИ-письмо")
-            if progress:
-                progress.set_visibility(False)
-            if status_lbl:
-                status_lbl.set_visibility(False)
+            btn.set_text(original_text)
+            self._hide_progress()
 
     async def handle_analyze(self):
         if not self.selected_vacancy_id:
@@ -69,6 +64,7 @@ class _LettersMixin:
             return
         self.el["detail_analysis"].set_content("⏳ ИИ анализирует вакансию...")
         self.el["btn_analyze"].disable()
+        self._show_progress("ИИ анализирует вакансию…")
         try:
             resume_text = self._safe_resume_text()
             data = await run.io_bound(
@@ -82,6 +78,7 @@ class _LettersMixin:
             self._show_error(str(ex))
         finally:
             self.el["btn_analyze"].enable()
+            self._hide_progress()
 
     @staticmethod
     def _format_analysis(data: dict) -> str:
@@ -134,6 +131,7 @@ class _LettersMixin:
         current_letter = self.el["text_letter"].value
         vid = self.selected_vacancy_id
         self.el["btn_feedback"].disable()
+        self._show_progress("ИИ правит письмо…")
         try:
             response = await run.io_bound(
                 self.analyzer.adjust_letter,
@@ -147,6 +145,7 @@ class _LettersMixin:
             self._show_error(str(ex))
         finally:
             self.el["btn_feedback"].enable()
+            self._hide_progress()
 
     async def handle_score_letter(self) -> None:
         """ИИ-оценка текущего письма по 4 критериям."""
@@ -160,7 +159,7 @@ class _LettersMixin:
 
         btn = self.el["btn_score_letter"]
         btn.disable()
-        ui.notify("Оцениваю письмо…", type="info", timeout=2000)
+        self._show_progress("ИИ оценивает письмо…")
 
         try:
             v = self.repo.get_vacancy_by_id(self.selected_vacancy_id)
@@ -169,15 +168,17 @@ class _LettersMixin:
             description = (v or {}).get("description", "")
 
             result = await run.io_bound(
-                LetterAnalyzer().score_cover_letter,
+                self.analyzer.score_cover_letter,
                 letter, title, company, description,
             )
         except Exception as ex:
             self._show_error(f"Ошибка оценки: {ex}")
             btn.enable()
+            self._hide_progress()
             return
 
         btn.enable()
+        self._hide_progress()
 
         score = result.get("score", 0)
         criteria = result.get("criteria", [])
@@ -304,11 +305,11 @@ class _LettersMixin:
         btn = self.el["btn_score_letter"]
         btn.disable()
         btn.set_text("Улучшаю…")
-        ui.notify("Улучшаю письмо по критериям…", type="info", timeout=3000)
+        self._show_progress("ИИ улучшает письмо по критериям…")
 
         try:
             result = await run.io_bound(
-                LetterAnalyzer().adjust_letter,
+                self.analyzer.adjust_letter,
                 letter, feedback, title, description,
             )
             improved = (result or {}).get("letter", "").strip()
@@ -329,6 +330,7 @@ class _LettersMixin:
         finally:
             btn.enable()
             btn.set_text("Оценить")
+            self._hide_progress()
 
     def handle_letter_history(self) -> None:
         """Показывает диалог с историей версий письма (до 5) с возможностью восстановить."""
@@ -423,11 +425,26 @@ class _LettersMixin:
             self.el["text_letter"].set_value(letter_data.get("letter_text") or "")
             self.el["text_recs"].set_value(letter_data.get("recommendations") or "")
 
+    def handle_letter_text_blur(self) -> None:
+        """Сохраняет ручные правки текста письма при потере фокуса полем."""
+        if not self.selected_vacancy_id:
+            return
+        letter = self.el["text_letter"].value or ""
+        recs = self.el["text_recs"].value or ""
+        existing = self.repo.get_cover_letter(self.selected_vacancy_id) or {}
+        if letter == (existing.get("letter_text") or ""):
+            return  # ничего не изменилось — не плодим версии в истории
+        self.repo.save_cover_letter(self.selected_vacancy_id, letter, recs)
+        ui.notify("Правки сохранены", type="positive", icon="save", timeout=1500)
+
     def copy_letter(self):
         text = self.el["text_letter"].value or ""
         if text:
             ui.clipboard.write(text)
             ui.notify("Скопировано в буфер обмена", type="positive")
+
+    # Статусы, на которых отклик уже отправлен — повторный автоотклик не нужен.
+    _ALREADY_RESPONDED_STATUSES = {"applied", "interview", "offer", "rejected"}
 
     def handle_auto_apply(self):
         if not self.selected_vacancy_id:
@@ -439,6 +456,23 @@ class _LettersMixin:
             return
         v = self.repo.get_vacancy_by_id(self.selected_vacancy_id)
         name = f"{v.get('company', '')} — {v.get('title', '')}" if v else self.selected_vacancy_id
+
+        if v and v.get("status") in self._ALREADY_RESPONDED_STATUSES:
+            label, _ = self._STATUS_LABEL.get(v["status"], (v["status"], "info"))
+            with ui.dialog() as dlg, ui.card():
+                ui.label("Отклик уже отправлен").classes("text-lg font-bold")
+                ui.label(
+                    f"Текущий статус вакансии «{name}»: «{label}». "
+                    "Повторная отправка автоотклика не требуется."
+                )
+                with ui.row().classes("justify-end w-full"):
+                    ui.button("Отмена", on_click=dlg.close).props("flat")
+                    ui.button(
+                        "Всё равно отправить",
+                        on_click=lambda: (dlg.close(), self._do_auto_apply()),
+                    ).props("color=warning")
+            dlg.open()
+            return
 
         with ui.dialog() as dlg, ui.card():
             ui.label("Подтвердите автоотклик").classes("text-lg font-bold")
@@ -453,6 +487,7 @@ class _LettersMixin:
         letter = self.el["text_letter"].value
         btn = self.el["btn_auto_apply"]
         btn.disable()
+        self._show_progress("Отправляю отклик на hh.ru…")
         try:
             success, msg = await run.io_bound(HHParser().auto_apply, vid, letter)
             if success:
@@ -466,6 +501,8 @@ class _LettersMixin:
         except Exception as ex:
             self._show_error(str(ex))
             btn.enable()
+        finally:
+            self._hide_progress()
 
     def _do_auto_apply(self):
         ui.timer(0.01, self._do_auto_apply_async, once=True)
@@ -546,7 +583,7 @@ class _LettersMixin:
             pass
 
     def _refresh_resume_label(self):
-        path = self.resume.file_path
+        name = self._resume_display_name()
         self.el["resume_label"].set_text(
-            f"📄 {path.name}" if path.exists() else "Резюме не загружено"
+            f"📄 {name}" if name else "Резюме не загружено"
         )

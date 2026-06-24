@@ -1,152 +1,126 @@
-import json
 import logging
-import os
-import time
 
-from core.config import AppConfig
-from core.groq_client import make_groq_client
+from core.ai._base import BaseAIClient
 
 
-class MockInterviewEngine:
+class MockInterviewEngine(BaseAIClient):
     def __init__(self):
-        self.config = AppConfig()
-        self.api_key = os.getenv("GROQ_API_KEY")
-        if not self.api_key:
-            raise ValueError("GROQ_API_KEY не найден в .env")
-        self.client = make_groq_client(self.api_key)
-        self.model = self.config.get("llm_model")
-        self.fallback_model = self.config.get("llm_fallback_model")
-        self.analysis_model = self.config.get("llm_analysis_model")
-        logging.info(
-            f"[AI-Interview] Модель: {self.model} (резерв: {self.fallback_model})"
-        )
+        super().__init__(log_prefix="[AI-Interview]")
 
-    def _complete(
-        self,
-        messages: list[dict[str, str]],
-        temperature: float,
-        *,
-        json_mode: bool = True,
-        max_tokens: int | None = None,
-        max_retries: int = 3,
-        model: str | None = None,
-    ) -> str:
-        """Запрос к Groq с ретраями и фолбэком на резервную модель."""
-        if model:
-            models = [model]
-        else:
-            models = [self.model]
-            if self.fallback_model and self.fallback_model != self.model:
-                models.append(self.fallback_model)
-
-        last_error: Exception | None = None
-        for model_name in models:
-            for attempt in range(max_retries):
-                try:
-                    completion = self.client.chat.completions.create(
-                        messages=messages,
-                        model=model_name,
-                        temperature=temperature,
-                        response_format={"type": "json_object"} if json_mode else None,
-                        max_tokens=max_tokens,
-                        timeout=60,
-                    )
-                    return completion.choices[0].message.content
-                except Exception as e:
-                    last_error = e
-                    logging.warning(
-                        f"[AI] {model_name}: попытка {attempt + 1}/{max_retries} не удалась: {e}"
-                    )
-                    if attempt < max_retries - 1:
-                        time.sleep(2**attempt)
-            if len(models) > 1:
-                logging.warning(
-                    f"[AI] Переключаюсь на резервную модель после сбоя {model_name}"
-                )
-
-        raise last_error if last_error else RuntimeError("Groq: неизвестная ошибка")
-
-    # ── Форматы интервью ──────────────────────────────────────────────
+    # ── Форматы интервью ──────────────────────────────────────────────────
+    # Все промпты используют {title}, {company}, {description} — без QA-хардкодов.
     _INTERVIEW_FORMATS: dict[str, dict] = {
         "tech": {
             "label": "Техническое",
             "system": (
-                "Ты — строгий Senior QA Lead в компании {company}. "
-                "Проводишь техническое интервью на позицию «{title}». "
-                "Требования:\n{description}\n\n"
-                "Представься и задай ОДИН технический вопрос по стеку. Не пиши за кандидата."
+                "Ты — опытный технический интервьюер в компании {company}. "
+                "Проводишь техническое интервью на позицию «{title}».\n"
+                "Требования из вакансии:\n{description}\n\n"
+                "Задавай вопросы строго по специфике этой роли и стека. "
+                "Представься и задай ОДИН конкретный технический вопрос. "
+                "Не пиши за кандидата."
             ),
-            "eval_note": (
-                "Оцени кандидата по пяти компетенциям технического интервью QA:\n"
-                "1. Технические знания\n2. Методология тестирования\n"
-                "3. Инструменты и стек\n4. Критическое мышление\n5. Глубина знаний"
+            "eval_system": (
+                "Ты — объективный эксперт по техническим интервью. "
+                "Оцени кандидата на позицию «{title}» в компании {company} "
+                "по пяти ключевым компетенциям для ЭТОЙ конкретной роли:\n"
+                "1. Профессиональные технические знания по роли\n"
+                "2. Практический опыт и примеры из работы\n"
+                "3. Знание инструментов и технологий из вакансии\n"
+                "4. Качество решений и аргументация\n"
+                "5. Глубина понимания предметной области"
             ),
         },
         "hr": {
             "label": "HR-скрининг",
             "system": (
                 "Ты — профессиональный HR-менеджер в компании {company}. "
-                "Проводишь скрининговое интервью кандидата на позицию «{title}». "
+                "Проводишь HR-скрининг кандидата на позицию «{title}». "
                 "Фокус: мотивация, soft skills, карьерные цели, culture fit, командная работа. "
                 "Задавай поведенческие вопросы. Никаких технических вопросов. "
                 "Представься, объясни формат и задай первый вопрос."
             ),
-            "eval_note": (
-                "Оцени кандидата по пяти HR-компетенциям:\n"
-                "1. Коммуникация\n2. Мотивация\n"
-                "3. Cultural Fit\n4. Карьерные цели\n5. Эмоциональный интеллект"
+            "eval_system": (
+                "Ты — объективный HR-эксперт. "
+                "Оцени кандидата на позицию «{title}» в компании {company} "
+                "по пяти HR-компетенциям:\n"
+                "1. Коммуникация и самопрезентация\n"
+                "2. Мотивация и интерес к роли\n"
+                "3. Cultural Fit и командная работа\n"
+                "4. Карьерные цели и адекватность ожиданий\n"
+                "5. Эмоциональный интеллект и стрессоустойчивость"
             ),
         },
         "system_design": {
             "label": "System Design",
             "system": (
-                "Ты — Senior QA Architect в компании {company}. "
-                "Проводишь System Design интервью на позицию «{title}». "
+                "Ты — опытный архитектор в компании {company}. "
+                "Проводишь System Design интервью на позицию «{title}».\n"
                 "Описание роли:\n{description}\n\n"
-                "Попроси кандидата спроектировать систему тестирования для ключевого сервиса компании. "
-                "Оценивай: структурность подхода, полноту тест-плана, выбор инструментов, понимание рисков. "
-                "Представься, опиши задачу и жди ответа. Задавай уточняющие вопросы по ходу."
+                "Предложи кандидату спроектировать систему или архитектурное решение, "
+                "релевантное этой роли и компании. "
+                "Оценивай: структурность подхода, полноту решения, выбор технологий, "
+                "понимание trade-offs и рисков. "
+                "Представься, опиши задачу и жди ответа. Задавай уточняющие вопросы."
             ),
-            "eval_note": (
-                "Оцени кандидата по пяти компетенциям System Design интервью:\n"
-                "1. Системное мышление\n2. Полнота тест-плана\n"
-                "3. Инструменты и архитектура\n4. Управление рисками\n5. Структурность"
+            "eval_system": (
+                "Ты — объективный эксперт по System Design. "
+                "Оцени кандидата на позицию «{title}» в компании {company} "
+                "по пяти компетенциям System Design:\n"
+                "1. Системное мышление и декомпозиция задачи\n"
+                "2. Полнота и обоснованность решения\n"
+                "3. Знание технологий и инструментов\n"
+                "4. Управление компромиссами (trade-offs)\n"
+                "5. Структурность изложения"
             ),
         },
         "behavioral": {
             "label": "Поведенческое (STAR)",
             "system": (
-                "Ты — Senior QA Lead в компании {company}. "
+                "Ты — опытный интервьюер в компании {company}. "
                 "Проводишь поведенческое интервью на позицию «{title}» по методике STAR. "
                 "После каждого ответа давай краткую оценку структуры (Situation/Task/Action/Result) "
                 "и задавай следующий вопрос. "
-                "Темы: сложные баги, конфликты в команде, дедлайны, провальный релиз, обучение новому. "
+                "Темы вопросов: сложные ситуации в работе, конфликты в команде, "
+                "жёсткие дедлайны, неудачный проект, быстрое обучение новому. "
                 "Представься и начни с первого STAR-вопроса."
             ),
-            "eval_note": (
-                "Оцени кандидата по пяти поведенческим компетенциям (методика STAR):\n"
-                "1. Структура ответов (STAR)\n2. Командная работа\n"
-                "3. Управление конфликтами\n4. Обучаемость\n5. Ответственность за результат"
+            "eval_system": (
+                "Ты — объективный эксперт по поведенческим интервью. "
+                "Оцени кандидата на позицию «{title}» в компании {company} "
+                "по пяти поведенческим компетенциям (методика STAR):\n"
+                "1. Структура ответов (Situation/Task/Action/Result)\n"
+                "2. Командная работа и коллаборация\n"
+                "3. Управление конфликтами и сложными ситуациями\n"
+                "4. Обучаемость и адаптивность\n"
+                "5. Ответственность за результат"
             ),
         },
     }
 
-    # ── Уровни сложности ──────────────────────────────────────────────
+    # ── Уровни сложности ──────────────────────────────────────────────────
     _LEVELS: dict[str, dict] = {
         "junior": {
             "label": "Junior",
-            "note": ("Уровень кандидата — JUNIOR. Вопросы — базовые и средние: "
-                     "основы, определения, простые практические кейсы. Тон поддерживающий."),
+            "note": (
+                "Уровень кандидата — JUNIOR. Задавай базовые и средние вопросы: "
+                "основы роли, определения, простые практические кейсы. "
+                "Тон поддерживающий, не давящий."
+            ),
         },
         "middle": {
             "label": "Middle",
-            "note": ("Уровень кандидата — MIDDLE. Вопросы средней сложности с "
-                     "практическими сценариями, проверяй самостоятельность и опыт."),
+            "note": (
+                "Уровень кандидата — MIDDLE. Вопросы средней сложности "
+                "с практическими сценариями. Проверяй самостоятельность и реальный опыт."
+            ),
         },
         "senior": {
             "label": "Senior",
-            "note": ("Уровень кандидата — SENIOR. Вопросы сложные: архитектура, "
-                     "trade-offs, нетривиальные кейсы, обоснование решений. Копай вглубь."),
+            "note": (
+                "Уровень кандидата — SENIOR. Вопросы сложные: архитектура, "
+                "trade-offs, нетривиальные кейсы, обоснование решений. Копай вглубь."
+            ),
         },
     }
 
@@ -156,7 +130,11 @@ class MockInterviewEngine:
         level: str = "middle", resume_text: str = "",
     ) -> str:
         tpl = cls._INTERVIEW_FORMATS.get(fmt, cls._INTERVIEW_FORMATS["tech"])["system"]
-        prompt = tpl.format(company=company, title=title, description=description[:2000])
+        prompt = tpl.format(
+            company=company or "компании",
+            title=title or "данной позиции",
+            description=(description or "")[:2000],
+        )
 
         level_note = cls._LEVELS.get(level, cls._LEVELS["middle"])["note"]
         prompt += f"\n\n{level_note}"
@@ -181,7 +159,7 @@ class MockInterviewEngine:
             logging.error(f"Ошибка в mock-интервью: {e}")
             return "Извините, произошла техническая ошибка."
 
-    # ── Разбор отдельного ответа (теория + эталон) ────────────────────
+    # ── Разбор отдельного ответа ──────────────────────────────────────────
     def analyze_answer(
         self, question: str, answer: str, fmt: str, title: str, company: str,
         level: str = "middle",
@@ -189,27 +167,27 @@ class MockInterviewEngine:
         """Обучающий разбор одного ответа кандидата.
 
         → JSON {score, verdict, correct[], mistakes[], theory, model_answer}.
-        Теорию и эталон даёт ВСЕГДА (это тренажёр), даже если ответа по сути нет.
-        Оценка калибруется под уровень (level): для junior планка ниже, для senior выше.
+        Оценка калибруется под уровень (level) и специфику роли (title).
         """
-        fmt_info = self._INTERVIEW_FORMATS.get(fmt, self._INTERVIEW_FORMATS["tech"])
-        persona = fmt_info["label"].lower()
         level_label = self._LEVELS.get(level, self._LEVELS["middle"])["label"]
+        fmt_label = self._INTERVIEW_FORMATS.get(fmt, self._INTERVIEW_FORMATS["tech"])["label"].lower()
         system_prompt = (
-            f"Оценивай по планке уровня {level_label}. "
-            f"Ты — наставник-эксперт по подготовке к собеседованиям. Разбираешь ответ "
-            f"кандидата на {persona} интервью на позицию «{title}». Цель — НАУЧИТЬ: "
-            "честно укажи ошибки и дай правильную теорию.\n\n"
+            f"Ты — наставник-эксперт, готовишь кандидата к собеседованию "
+            f"на позицию «{title or 'данную роль'}». "
+            f"Формат интервью: {fmt_label}. Уровень кандидата: {level_label}.\n\n"
+            "Разбери ответ честно и по делу — цель НАУЧИТЬ.\n\n"
             "Верни СТРОГО JSON:\n"
             "{\n"
             '  "score": <целое 1-10>,\n'
             '  "verdict": "Зачтено | Частично | Неверно",\n'
-            '  "correct": ["что в ответе верно/удачно", ...],\n'
-            '  "mistakes": ["ошибка или что упущено — конкретно", ...],\n'
-            '  "theory": "Правильная теория по теме вопроса: по делу, понятно, 3-6 предложений. Можно списком ключевых пунктов.",\n'
-            '  "model_answer": "Краткий эталонный ответ — как ответил бы сильный кандидат (2-5 предложений)."\n'
+            '  "correct": ["что верно или удачно в ответе", ...],\n'
+            '  "mistakes": ["конкретная ошибка или упущение", ...],\n'
+            '  "theory": "Правильная теория по теме вопроса: по делу, '
+            'понятно, 3-6 предложений.",\n'
+            '  "model_answer": "Как ответил бы сильный кандидат уровня '
+            f'{level_label} на эту позицию (2-5 предложений)."\n'
             "}\n"
-            "Если ответ пустой/«не знаю» — score низкий, correct может быть пустым, "
+            "Если ответ пустой/«не знаю» — score низкий, correct пустой, "
             "но theory и model_answer заполни обязательно."
         )
         user_prompt = (
@@ -221,8 +199,7 @@ class MockInterviewEngine:
              {"role": "user", "content": user_prompt}],
             temperature=0.2, json_mode=True, max_tokens=900, model=self.analysis_model,
         )
-        data = json.loads(content)
-        # Нормализация типов для UI.
+        data = self._parse_json_safe(content)
         data["score"] = int(data.get("score", 0) or 0)
         for k in ("correct", "mistakes"):
             v = data.get(k)
@@ -233,11 +210,11 @@ class MockInterviewEngine:
         return data
 
     def get_hint(self, question: str, fmt: str, title: str) -> str:
-        """Короткая подсказка по текущему вопросу — направление, без полного ответа."""
+        """Короткая подсказка по текущему вопросу — направление без полного ответа."""
         system_prompt = (
-            "Ты помогаешь кандидату на собеседовании. Дай КОРОТКУЮ подсказку "
-            "(1–2 предложения): направление мысли и 2–3 ключевых термина. "
-            "НЕ давай полный ответ — только наводку."
+            f"Ты помогаешь кандидату на интервью на позицию «{title or 'данную роль'}». "
+            "Дай КОРОТКУЮ подсказку (1-2 предложения): направление мысли и "
+            "2-3 ключевых термина. НЕ давай полный ответ — только наводку."
         )
         content = self._complete(
             [{"role": "system", "content": system_prompt},
@@ -249,18 +226,18 @@ class MockInterviewEngine:
     def get_model_answer(self, question: str, fmt: str, title: str) -> dict:
         """Эталонный ответ + теория по текущему вопросу → {model_answer, theory}."""
         system_prompt = (
-            f"Ты — эксперт по теме интервью на позицию «{title}». Дай образцовый ответ "
-            "на вопрос и краткую теорию.\n\n"
+            f"Ты — эксперт по роли «{title or 'данная позиция'}». "
+            "Дай образцовый ответ на вопрос и краткую теорию по теме.\n\n"
             "Верни СТРОГО JSON:\n"
-            '{ "model_answer": "Эталонный ответ (3-6 предложений).",'
-            ' "theory": "Ключевая теория по теме: понятно и по делу." }'
+            '{"model_answer": "Эталонный ответ (3-6 предложений).", '
+            '"theory": "Ключевая теория по теме: понятно и по делу."}'
         )
         content = self._complete(
             [{"role": "system", "content": system_prompt},
              {"role": "user", "content": f"Вопрос: {question}"}],
             temperature=0.3, json_mode=True, max_tokens=700, model=self.analysis_model,
         )
-        data = json.loads(content)
+        data = self._parse_json_safe(content)
         return {
             "model_answer": str(data.get("model_answer") or ""),
             "theory": str(data.get("theory") or ""),
@@ -269,27 +246,30 @@ class MockInterviewEngine:
     def evaluate_mock_interview(
         self, history: list[dict], fmt: str, title: str, company: str
     ) -> dict:
-        """Оценивает сессию mock-интервью → JSON с компетенциями, сильными сторонами и рекомендацией."""
+        """Оценивает сессию mock-интервью → JSON с компетенциями и рекомендацией."""
         fmt_info = self._INTERVIEW_FORMATS.get(fmt, self._INTERVIEW_FORMATS["tech"])
-        eval_note = fmt_info["eval_note"]
+        eval_system = fmt_info["eval_system"].format(
+            title=title or "данной позиции",
+            company=company or "компании",
+        )
         dialog = "\n".join(
             f"[{'Интервьюер' if m['role'] == 'assistant' else 'Кандидат'}]: {m['content']}"
             for m in history
             if m["role"] in ("assistant", "user")
         )
         system_prompt = (
-            f"Ты — объективный эксперт по оценке кандидатов. "
-            f"Проанализируй запись интервью на позицию «{title}» в компании {company}.\n\n"
-            f"{eval_note}\n\n"
+            f"{eval_system}\n\n"
             "Верни СТРОГО JSON-объект:\n"
             "{\n"
             '  "summary": "2-3 предложения: общее впечатление о кандидате",\n'
             '  "competencies": [\n'
-            '    {"name": "Название", "score": 8, "comment": "1 предложение"}, ...\n'
+            '    {"name": "Название компетенции", "score": 8, '
+            '"comment": "1 предложение"}, ...\n'
             "  ],\n"
             '  "strengths": ["сильная сторона 1", "сильная сторона 2"],\n'
             '  "improvements": ["что улучшить 1", "что улучшить 2"],\n'
-            '  "recommendation": "Рекомендую к следующему этапу / Нужна дополнительная подготовка / Не рекомендую"\n'
+            '  "recommendation": "Рекомендую к следующему этапу / '
+            'Нужна дополнительная подготовка / Не рекомендую"\n'
             "}\n"
             "score — целое число от 1 до 10. Будь честным и конкретным."
         )
@@ -303,4 +283,4 @@ class MockInterviewEngine:
             max_tokens=900,
             model=self.analysis_model,
         )
-        return json.loads(content)
+        return self._parse_json_safe(content)

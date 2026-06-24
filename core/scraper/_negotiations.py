@@ -3,8 +3,29 @@ import logging
 import random
 import re
 from collections.abc import Callable
+from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
+
+from core.scraper._constants import (
+    HH_BASE_URL,
+    HH_NEGOTIATIONS_URL,
+    HH_VACANCY_URL,
+    TIMEOUT_NETWORK_IDLE_MS,
+    TIMEOUT_PAGE_LOAD_MS,
+    TIMEOUT_PAGE_LOAD_SLOW_MS,
+    TIMEOUT_SELECTOR_SLOW_MS,
+    TIMEOUT_SYNC_PAGE_MS,
+)
+
+
+def _extract_base(url: str) -> str:
+    """Возвращает scheme+host из URL, напр. 'https://perm.hh.ru'."""
+    try:
+        p = urlparse(url)
+        return f"{p.scheme}://{p.netloc}"
+    except Exception:
+        return HH_BASE_URL
 
 
 class _NegotiationsMixin:
@@ -34,7 +55,7 @@ class _NegotiationsMixin:
     ]
 
     # Адрес страницы «Отклики» (список переговоров соискателя).
-    _NEGOTIATIONS_URL = "https://hh.ru/applicant/negotiations"
+    _NEGOTIATIONS_URL = HH_NEGOTIATIONS_URL
     _NEG_MAX_PAGES = 20  # предохранитель от бесконечной пагинации
 
     # Маппинг статуса из КАРТОЧКИ страницы «Отклики» → канонический текст для
@@ -75,16 +96,11 @@ class _NegotiationsMixin:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p:
-            if not self._check_logged_in(p):
-                raise RuntimeError(
-                    "Не авторизован на hh.ru. "
-                    "Войдите через кнопку «Войти» и повторите синхронизацию."
-                )
-            ctx = p.chromium.launch_persistent_context(
-                user_data_dir=str(self.user_data_dir),
-                headless=True,
-                user_agent=random.choice(self.user_agents),
-                viewport={"width": 1280, "height": 800},
+            # Открываем ОДИН persistent context сразу — не вызываем _check_logged_in
+            # отдельно, так как он открывает свой context на тот же user_data_dir
+            # и закрывает его, из-за чего следующий context стартует без сессии.
+            ctx = self._launch_context(
+                p, headless=False,
                 locale="ru-RU",
                 timezone_id="Europe/Moscow",
                 args=[
@@ -93,8 +109,6 @@ class _NegotiationsMixin:
                     "--disable-dev-shm-usage",
                 ],
             )
-            # Стелс: маскируем признаки headless/automation, на которые смотрит
-            # анти-бот hh.ru (/vpncheeck). Снижает вероятность редиректа на проверку.
             try:
                 ctx.add_init_script(
                     "Object.defineProperty(navigator,'webdriver',{get:()=>undefined});"
@@ -104,9 +118,34 @@ class _NegotiationsMixin:
                 )
             except Exception:
                 pass
+
             try:
                 page = ctx.new_page()
-                results = self._fetch_from_negotiations_list(page, progress_callback)
+
+                # Открываем страницу откликов — браузер уже с сессией из user_data_dir.
+                # Если не авторизован — hh.ru редиректит на /account/login.
+                page.goto(
+                    self._NEGOTIATIONS_URL,
+                    wait_until="domcontentloaded",
+                    timeout=TIMEOUT_PAGE_LOAD_MS,
+                )
+
+                # Проверяем авторизацию по URL после редиректа
+                if "/account/login" in page.url:
+                    raise RuntimeError(
+                        "Не авторизован на hh.ru. "
+                        "Войдите через кнопку «Войти» и повторите синхронизацию."
+                    )
+
+                real_base = _extract_base(page.url)
+                logging.info(f"[Sync] реальный домен hh.ru: {real_base}")
+
+                # Если словили vpncheck — ждём ручного прохождения.
+                if self._is_blocked_page(page):
+                    self._wait_for_unblock(page, self._NEGOTIATIONS_URL)
+                    real_base = _extract_base(page.url)
+
+                results = self._fetch_from_negotiations_list(page, progress_callback, real_base)
                 if results:
                     return results
                 logging.warning(
@@ -116,239 +155,193 @@ class _NegotiationsMixin:
             finally:
                 ctx.close()
 
-    _NEG_LOAD_ATTEMPTS = 3  # ретраи загрузки одной страницы списка
-
     def _wait_through_vpncheck(self, page, target_url: str) -> None:
         """Пережидает анти-бот-страницу hh.ru `/vpncheeck`.
 
-        hh.ru при заходе на «чувствительные» страницы (отклики) может перебросить
-        на /vpncheeck с JS-проверкой и авто-возвратом по backUrl. Ждём возврата;
-        если застряли — повторно переходим на целевой URL.
+        Сначала ждёт авто-прохождения JS-проверки (~5 с). Если hh.ru не вернул
+        сам — открывает окно для ручного прохождения через _wait_for_unblock.
         """
-        for _ in range(8):  # ~до 24с суммарно
+        try:
+            cur = page.url
+        except Exception:
+            cur = ""
+        if "vpncheeck" not in cur and "vpncheck" not in cur:
+            return
+
+        logging.info("[NegList] vpncheeck hh.ru — жду авто-прохождения JS-проверки…")
+        # Даём hh.ru ~5 сек на автоматическое прохождение JS-редиректа
+        for _ in range(5):
+            page.wait_for_timeout(1000)
             try:
                 cur = page.url
             except Exception:
                 cur = ""
             if "vpncheeck" not in cur and "vpncheck" not in cur:
+                logging.info("[NegList] vpncheeck пройден автоматически")
                 return
-            logging.info("[NegList] анти-бот hh.ru (/vpncheeck) — жду прохождения проверки…")
-            page.wait_for_timeout(2500)
-            cur = page.url
-            if "vpncheeck" in cur or "vpncheck" in cur:
-                # Не вернулись сами — пробуем перейти на отклики ещё раз.
-                try:
-                    page.goto(target_url, wait_until="domcontentloaded", timeout=30000)
-                except Exception:
-                    pass
 
-    def _load_negotiations_page(self, page, page_num: int) -> str:
-        """Грузит страницу списка с ретраями: ждём появления ссылок на вакансии.
+        # JS-редирект не сработал — нужно ручное прохождение
+        self._wait_for_unblock(page, target_url)
 
-        Список рендерится JS — без ожидания мы читаем пустой DOM. Делаем до
-        _NEG_LOAD_ATTEMPTS попыток (перезагрузка + ожидание), возвращаем HTML
-        как только в нём появились ссылки `/vacancy/...`, иначе — последний HTML.
+        """Парсит HTML страницы /applicant/negotiations после рендера React.
+
+        Структура карточки:
+          data-qa="negotiations-item"
+            <a href="/vacancy/ID?...">  ← первая ссылка = вакансия
+            data-qa="negotiations-item-vacancy"  ← название
+            data-qa="negotiations-item-company"  ← компания
+            data-qa="negotiations-tag negotiations-item-{status}"  ← статус
         """
-        url = f"{self._NEGOTIATIONS_URL}?page={page_num}"
-        last_html = ""
-        for attempt in range(1, self._NEG_LOAD_ATTEMPTS + 1):
-            try:
-                page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                # Анти-бот hh.ru: может перебросить на /vpncheeck с авто-возвратом
-                # на negotiations после JS-проверки. Ждём, пока вернёмся обратно.
-                self._wait_through_vpncheck(page, url)
-                # Ждём карточки откликов или ссылку на вакансию.
-                try:
-                    page.wait_for_selector("a[href*='/vacancy/']", timeout=8000)
-                except Exception:
-                    pass
-                # Догружаем ленивый список прокруткой.
-                for _ in range(5):
-                    page.mouse.wheel(0, 5000)
-                    page.wait_for_timeout(400)
-                try:
-                    page.wait_for_load_state("networkidle", timeout=5000)
-                except Exception:
-                    pass
-                page.wait_for_timeout(600)
-                last_html = page.content()
-                if "/vacancy/" in last_html:
-                    if attempt > 1:
-                        logging.info(f"[NegList] страница {page_num + 1}: успех с попытки {attempt}")
-                    return last_html
-                logging.warning(
-                    f"[NegList] страница {page_num + 1}: ссылок не найдено "
-                    f"(попытка {attempt}/{self._NEG_LOAD_ATTEMPTS}), повтор…"
-                )
-                page.wait_for_timeout(1500 * attempt)
-            except Exception as exc:
-                logging.warning(
-                    f"[NegList] страница {page_num + 1}: ошибка загрузки "
-                    f"(попытка {attempt}/{self._NEG_LOAD_ATTEMPTS}): {exc}"
-                )
-                page.wait_for_timeout(1500 * attempt)
-        return last_html
-
-    def _fetch_from_negotiations_list(
-        self, page, progress_callback: Callable | None = None
-    ) -> list[dict]:
-        """Собирает отклики со страницы «Отклики».
-
-        Список грузится отдельным JSON-запросом (React-SPA), поэтому ловим
-        сетевые ответы и парсим JSON. HTML-разбор оставлен как запасной.
-        """
-        captured: list[tuple[str, object]] = []
-
-        def _on_response(resp):
-            try:
-                url = resp.url.lower()
-                ct = (resp.headers or {}).get("content-type", "")
-                if "json" in ct and ("negotiat" in url or "/shards/" in url
-                                      or "applicant" in url):
-                    captured.append((resp.url, resp.json()))
-            except Exception:
-                pass
-
-        page.on("response", _on_response)
-        try:
-            # Один заход на список — он сам подтянет JSON всех откликов.
-            html = self._load_negotiations_page(page, 0)
-            page.wait_for_timeout(2000)  # даём JSON-запросам долететь
-        finally:
-            try:
-                page.remove_listener("response", _on_response)
-            except Exception:
-                pass
-
-        # Диагностика пойманных JSON — чтобы увидеть реальный эндпоинт/структуру.
-        for url, data in captured[:8]:
-            top = list(data.keys())[:12] if isinstance(data, dict) else type(data).__name__
-            logging.info(f"[NegList:json] {url[:90]} keys={top}")
-
-        results = self._extract_from_neg_json(captured, progress_callback)
-        if results:
-            logging.info(f"[NegList] из JSON получено откликов: {len(results)}")
-            return results
-
-        # Фолбэк: вдруг что-то всё же отрендерилось в HTML.
-        logging.warning("[NegList] JSON откликов не распознан — пробую HTML-разбор.")
-        results = []
+        soup = BeautifulSoup(html, "html.parser")
+        results: list[dict] = []
         seen: set[str] = set()
-        for page_num in range(self._NEG_MAX_PAGES):
-            html = self._load_negotiations_page(page, page_num)
-            if not html or "/vacancy/" not in html:
-                logging.warning(
-                    f"[NegList] страница {page_num + 1}: ссылок на вакансии нет — стоп."
-                )
-                break
 
-            items = self._parse_negotiations_list(html)
+        for card in soup.find_all(attrs={"data-qa": "negotiations-item"}):
+            # vacancy_id из первой ссылки /vacancy/ID
+            vid = ""
+            for a in card.find_all("a", href=True):
+                m = re.search(r"/vacancy/(\d+)", a["href"])
+                if m:
+                    vid = m.group(1)
+                    break
+            if not vid or vid in seen:
+                continue
+            seen.add(vid)
 
-            # Диагностика, если карточек не нашли — чтобы понять реальную верстку.
-            if not items:
-                self._diag_negotiations_html(page, html, page_num)
+            title_el = card.find(attrs={"data-qa": "negotiations-item-vacancy"})
+            title = title_el.get_text(strip=True) if title_el else ""
 
-            new_on_page = 0
-            for it in items:
-                vid = it["vacancy_id"]
-                if vid in seen:
-                    continue
-                seen.add(vid)
-                results.append(it)
-                new_on_page += 1
-                if progress_callback:
-                    progress_callback(len(results), len(results),
-                                      it.get("title") or vid)
+            company_el = card.find(attrs={"data-qa": "negotiations-item-company"})
+            company = company_el.get_text(strip=True) if company_el else ""
+
+            # Статус: ищем тег с data-qa содержащим "negotiations-tag"
+            hh_status = ""
+            for tag_el in card.find_all(attrs={"data-qa": re.compile(r"negotiations-tag")}):
+                dqa = tag_el.get("data-qa", "")
+                for suffix, mapped in self._NEG_TAG_STATUS:
+                    if suffix in dqa:
+                        hh_status = mapped
+                        break
+                if hh_status:
+                    break
 
             logging.info(
-                f"[NegList] страница {page_num + 1}: карточек={len(items)}, "
-                f"новых={new_on_page}, всего={len(results)}"
+                f"[NegPage:{vid}] «{title[:40]}» / {company} → «{hh_status or '?'}»"
             )
-            # Нет новых откликов на странице → пагинация закончилась.
-            if new_on_page == 0:
-                break
+            results.append({
+                "vacancy_id": vid,
+                "hh_status":  hh_status,
+                "title":      title[:80],
+                "company":    company,
+            })
 
         return results
 
-    # state.id из данных hh.ru → канонический текст для map_hh_status.
-    _NEG_STATE_ID_TO_TEXT: dict[str, str] = {
-        "response":   "вы уже откликнулись",
-        "invitation": "приглашение на интервью",
-        "interview":  "приглашение на интервью",
-        "discard":    "вам отказали",
-        "discard_by_employer": "вам отказали",
-        "offer":      "вам предложили работу",
-    }
-
-    def _extract_from_neg_json(
-        self, captured: list[tuple[str, object]],
-        progress_callback: Callable | None = None,
+    def _fetch_from_negotiations_list(
+        self, page, progress_callback: Callable | None = None,
+        real_base: str = HH_BASE_URL,
     ) -> list[dict]:
-        """Достаёт отклики из пойманных JSON-ответов hh.ru.
+        """Открывает страницу /applicant/negotiations и парсит список откликов.
 
-        Ищет объекты с ссылкой на вакансию (vacancy.id / vacancyId) и статусом
-        (state.id / state.name / status). Схему точно не знаем — берём широко и
-        логируем образец первого найденного объекта для доточки.
+        Ждёт рендера React (data-qa=negotiations-item), затем читает HTML.
+        Пагинирует через кнопку «Ещё».
         """
-        found: dict[str, dict] = {}
-        sample_logged = [False]
+        neg_url = f"{real_base}/applicant/negotiations"
+        try:
+            # Переходим на страницу откликов через goto — это надёжнее чем
+            # надеяться что мы уже там после редиректа.
+            page.goto(neg_url, wait_until="networkidle", timeout=TIMEOUT_PAGE_LOAD_SLOW_MS)
+            self._wait_through_vpncheck(page, neg_url)
 
-        def _status_text(node: dict) -> tuple[str, str]:
-            """→ (canonical_text_for_map, raw_for_log)."""
-            state = node.get("state") or node.get("status") or node.get("topicState")
-            sid, sname = "", ""
-            if isinstance(state, dict):
-                sid = str(state.get("id") or state.get("state") or "").lower()
-                sname = str(state.get("name") or state.get("title") or "")
-            elif isinstance(state, str):
-                sname = state
-            text = self._NEG_STATE_ID_TO_TEXT.get(sid, "")
-            if not text and sname:
-                low = sname.lower()
-                for kw, mapped in self._NEG_LIST_KEYWORDS:
-                    if kw in low:
-                        text = mapped
+            # Ждём пока React отрисует карточки откликов.
+            # Пробуем несколько возможных селекторов — hh.ru мог изменить data-qa.
+            selectors = [
+                '[data-qa="negotiations-item"]',
+                '[data-qa^="negotiations-"]',
+                'a[href*="/vacancy/"]',
+            ]
+            loaded = False
+            for sel in selectors:
+                try:
+                    page.wait_for_selector(sel, timeout=TIMEOUT_SELECTOR_SLOW_MS)
+                    loaded = True
+                    logging.info(f"[NegPage] страница загружена, найден: {sel}")
+                    break
+                except Exception:
+                    continue
+
+            if not loaded:
+                # Последняя попытка: просто подождём загрузки сети и проверим HTML
+                page.wait_for_timeout(5000)
+                html_check = page.content()
+                if "/vacancy/" not in html_check:
+                    logging.warning(
+                        f"[NegPage] страница откликов не загрузилась. "
+                        f"URL: {page.url}, HTML длина: {len(html_check)}"
+                    )
+                    self._diag_negotiations_html(page, html_check, 0)
+                    return []
+                logging.info("[NegPage] загрузка по fallback (ссылки на вакансии есть)")
+
+        except Exception as e:
+            logging.warning(f"[NegPage] ошибка при загрузке страницы откликов: {e}")
+            return []
+
+        results: list[dict] = []
+        seen_ids: set[str] = set()
+        _MAX_LOAD_MORE = 9  # первая загрузка + 9 кликов «Ещё» = 10 «страниц»
+
+        # Читаем первую порцию карточек
+        html = page.content()
+        batch = self._parse_negotiations_page_html(html)
+        for item in batch:
+            if item["vacancy_id"] not in seen_ids:
+                seen_ids.add(item["vacancy_id"])
+                results.append(item)
+        logging.info(f"[NegPage] загрузка 1: карточек={len(results)}")
+
+        # Кликаем кнопку «Ещё» до _MAX_LOAD_MORE раз — hh.ru дозагружает карточки
+        # в тот же список (infinite scroll), а не переходит на новую страницу.
+        for click_num in range(1, _MAX_LOAD_MORE + 1):
+            more_btn = page.locator('[data-qa="moreItems-button"]')
+            if more_btn.count() == 0:
+                logging.info(f"[NegPage] кнопка «Ещё» не найдена — все отклики загружены")
+                break
+
+            try:
+                more_btn.first.scroll_into_view_if_needed()
+                more_btn.first.click()
+                # Ждём появления новых карточек — счётчик должен вырасти
+                for _ in range(20):  # до 10 секунд
+                    page.wait_for_timeout(500)
+                    html = page.content()
+                    batch = self._parse_negotiations_page_html(html)
+                    new_ids = [i for i in batch if i["vacancy_id"] not in seen_ids]
+                    if new_ids:
                         break
-            return text, f"id={sid!r} name={sname!r}"
 
-        def walk(obj):
-            if isinstance(obj, dict):
-                vac = obj.get("vacancy")
-                vid = ""
-                title = ""
-                if isinstance(vac, dict):
-                    vid = str(vac.get("id") or vac.get("vacancyId") or "")
-                    title = vac.get("name") or vac.get("title") or ""
-                if not vid:
-                    raw = obj.get("vacancyId") or obj.get("vacancy_id")
-                    if raw:
-                        vid = str(raw)
-                if vid.isdigit():
-                    text, raw_state = _status_text(obj)
-                    if not sample_logged[0]:
-                        logging.info(
-                            f"[NegList:item] vid={vid} title={title[:40]!r} "
-                            f"{raw_state} keys={list(obj.keys())[:14]}"
-                        )
-                        sample_logged[0] = True
-                    if vid not in found or (text and not found[vid]["hh_status"]):
-                        found[vid] = {
-                            "vacancy_id": vid, "hh_status": text,
-                            "title": title[:80], "company": "",
-                        }
-                for v in obj.values():
-                    walk(v)
-            elif isinstance(obj, list):
-                for v in obj:
-                    walk(v)
+                new = 0
+                for item in batch:
+                    if item["vacancy_id"] not in seen_ids:
+                        seen_ids.add(item["vacancy_id"])
+                        results.append(item)
+                        new += 1
 
-        for _url, data in captured:
-            walk(data)
+                logging.info(f"[NegPage] загрузка {click_num + 1}: всего карточек={len(batch)}, новых={new}")
 
-        results = [it for it in found.values()]
-        if progress_callback and results:
-            for i, it in enumerate(results, 1):
-                progress_callback(i, len(results), it.get("title") or it["vacancy_id"])
+                if progress_callback and results:
+                    progress_callback(len(results), len(results),
+                                      results[-1].get("title") or "")
+
+                if new == 0:
+                    logging.info("[NegPage] новых карточек нет — все отклики загружены")
+                    break
+
+            except Exception as e:
+                logging.warning(f"[NegPage] ошибка при загрузке «Ещё» ({click_num}): {e}")
+                break
+
+        logging.info(f"[NegPage] итого откликов: {len(results)}")
         return results
 
     def _diag_negotiations_html(self, page, html: str, page_num: int) -> None:
@@ -393,76 +386,51 @@ class _NegotiationsMixin:
         except Exception as exc:
             logging.warning(f"[NegList:diag] не удалось собрать диагностику: {exc}")
 
-    def _parse_negotiations_list(self, html: str) -> list[dict]:
-        """Извлекает из HTML страницы «Отклики» список {vacancy_id, hh_status, title}."""
-        soup = BeautifulSoup(html, "html.parser")
-        items: list[dict] = []
-        seen: set[str] = set()
-
-        for a in soup.find_all("a", href=re.compile(r"/vacancy/(\d+)")):
-            m = re.search(r"/vacancy/(\d+)", a.get("href", ""))
-            if not m:
-                continue
-            vid = m.group(1)
-            if vid in seen:
-                continue
-
-            title = a.get_text(" ", strip=True)
-            # Поднимаемся к карточке отклика и читаем её текст для статуса.
-            card = a
-            card_text = ""
-            for _ in range(6):
-                card = card.parent
-                if card is None:
-                    break
-                txt = card.get_text(" ", strip=True)
-                # Карточка одного отклика: разумный объём текста и есть статусное слово.
-                if 20 < len(txt) < 1200:
-                    card_text = txt
-                    low = txt.lower()
-                    if any(k in low for k, _ in self._NEG_LIST_KEYWORDS):
-                        break
-
-            low = card_text.lower()
-            status = ""
-            for keyword, mapped in self._NEG_LIST_KEYWORDS:
-                if keyword in low:
-                    status = mapped
-                    break
-
-            seen.add(vid)
-            items.append({
-                "vacancy_id": vid,
-                "hh_status": status,
-                "title": title[:80],
-                "company": "",
-            })
-            # Сырой текст карточки — для доточки маппинга по реальным данным.
-            logging.info(
-                f"[NegList:{vid}] «{title[:40]}» статус=«{status or '?'}» "
-                f"текст={card_text[:160]!r}"
-            )
-
-        return items
-
     def _fetch_via_vacancy_pages(
         self, page, vacancy_ids: list[str],
         progress_callback: Callable | None = None,
     ) -> list[dict]:
-        """Фолбэк: поштучный обход страниц вакансий из CRM (медленно)."""
+        """Поштучный обход страниц вакансий через Playwright.
+
+        Проверяем только вакансии со статусом applied/interview — те на которые
+        откликнулись и у которых статус ещё может измениться.
+        discovered/processed — не откликались, offer/rejected — финальные статусы.
+        """
+        # Пропускаем только финальные статусы — там уже нечего обновлять
+        _SKIP_STATUSES = {"offer", "rejected"}
+        try:
+            from core.database import VacancyRepository
+            repo = VacancyRepository()
+            active_ids = [
+                v["id"] for v in repo.get_vacancies_filtered("all")
+                if v.get("status") not in _SKIP_STATUSES
+                and v.get("id") in set(vacancy_ids)
+            ]
+        except Exception:
+            active_ids = vacancy_ids  # если БД недоступна — обходим всё
+
+        if not active_ids:
+            logging.info("[Sync] все вакансии в финальных статусах — обход не нужен.")
+            return []
+
+        logging.info(
+            f"[Sync] поштучный обход {len(active_ids)} вакансий "
+            f"(пропущено {len(vacancy_ids) - len(active_ids)} финальных)"
+        )
         results: list[dict] = []
-        total = len(vacancy_ids)
+        total = len(active_ids)
+        vacancy_ids = active_ids
         for idx, vid in enumerate(vacancy_ids, 1):
-            url = f"https://hh.ru/vacancy/{vid}"
+            url = HH_VACANCY_URL.format(vacancy_id=vid)
             logging.info(f"[Sync] {idx}/{total} → {url}")
             if progress_callback:
                 progress_callback(idx, total, f"загружаю {vid}…")
             try:
-                page.goto(url, wait_until="domcontentloaded", timeout=25000)
+                page.goto(url, wait_until="domcontentloaded", timeout=TIMEOUT_SYNC_PAGE_MS)
                 try:
                     page.wait_for_selector(
                         "[data-qa*='response'],[data-qa*='status'],[data-qa*='vacancy-title']",
-                        timeout=5000,
+                        timeout=TIMEOUT_NETWORK_IDLE_MS,
                     )
                 except Exception:
                     pass

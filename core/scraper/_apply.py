@@ -1,6 +1,9 @@
 """Автоотклик на вакансию через Playwright — миксин для HHParser."""
 import logging
 import time
+from pathlib import Path
+
+from core.scraper._constants import HH_VACANCY_URL, TIMEOUT_APPLY_PAGE_MS
 
 
 class _ApplyMixin:
@@ -79,11 +82,8 @@ class _ApplyMixin:
                         "Повторите попытку и войдите в аккаунт в открывшемся окне браузера."
                     )
 
-            context = p.chromium.launch_persistent_context(
-                user_data_dir=str(self.user_data_dir),
-                headless=True,
-                user_agent=random.choice(self.user_agents),
-                viewport={"width": 1280, "height": 800},
+            context = self._launch_context(
+                p, headless=False,
                 locale="ru-RU",
                 timezone_id="Europe/Moscow",
                 args=[
@@ -139,16 +139,36 @@ class _ApplyMixin:
                         return loc, fr
                 return None, page
 
+            log_dir = Path(__file__).parent.parent.parent / "logs"
+            log_dir.mkdir(exist_ok=True)
+
+            def _snap(step: str):
+                """Скриншот + HTML страницы для диагностики."""
+                try:
+                    page.screenshot(path=str(log_dir / f"apply_{vacancy_id}_{step}.png"))
+                    (log_dir / f"apply_{vacancy_id}_{step}.html").write_text(
+                        page.content(), encoding="utf-8"
+                    )
+                    logging.info(f"[Apply:snap] {step} → logs/apply_{vacancy_id}_{step}.png")
+                except Exception as ex:
+                    logging.warning(f"[Apply:snap] {step}: {ex}")
+
             try:
-                url = f"https://hh.ru/vacancy/{vacancy_id}"
-                page.goto(url, timeout=40000, wait_until="domcontentloaded")
+                url = HH_VACANCY_URL.format(vacancy_id=vacancy_id)
+                logging.info(f"[Apply:1] Открываю страницу вакансии: {url}")
+                page.goto(url, timeout=TIMEOUT_APPLY_PAGE_MS, wait_until="domcontentloaded")
+                logging.info(f"[Apply:1] URL после goto: {page.url}")
+                _snap("01_page_loaded")
+
                 # Пережидаем анти-бот hh.ru, если перебросило на /vpncheeck.
                 try:
                     self._wait_through_vpncheck(page, url)
                 except Exception:
                     pass
                 page.wait_for_timeout(2000)
+                logging.info(f"[Apply:2] URL после vpncheck-ожидания: {page.url}")
 
+                logging.info("[Apply:3] Ищу кнопку «Откликнуться»...")
                 apply_btn = first_visible([
                     '[data-qa="vacancy-response-link-top"]',
                     '[data-qa="vacancy-response-link-bottom"]',
@@ -157,21 +177,22 @@ class _ApplyMixin:
                     ':text("Откликнуться")',
                 ], timeout_ms=15000)
                 if not apply_btn:
+                    _snap("03_no_apply_btn")
                     return False, (
                         "Кнопка «Откликнуться» не найдена. Вероятные причины: "
                         "отклик уже отправлен ранее, вакансия закрыта, "
                         "или требуется повторная авторизация на hh.ru."
                     )
 
-                logging.info("🖱 Нажимаю «Откликнуться»...")
+                logging.info("[Apply:4] Кнопка найдена — нажимаю «Откликнуться»...")
                 apply_btn.click()
                 page.wait_for_timeout(2500)
+                logging.info(f"[Apply:4] URL после клика: {page.url}")
+                _snap("04_after_apply_click")
 
-                # hh.ru после клика может: открыть попап, увести на отдельную
-                # страницу отклика, показать скрининг-вопросы/согласие. Ждём, пока
-                # появится поле письма ИЛИ сменится URL.
                 page.wait_for_timeout(1500)
 
+                logging.info("[Apply:5] Ищу тоггл сопроводительного письма...")
                 toggle, _ = find_in_any_scope([
                     '[data-qa="vacancy-response-letter-toggle"]',
                     '[data-qa*="letter-toggle"]',
@@ -181,15 +202,18 @@ class _ApplyMixin:
                     ':text("Сопроводительное письмо")',
                 ], timeout_ms=3000)
                 if toggle:
-                    logging.info("✉️ Раскрываю поле сопроводительного письма...")
+                    logging.info("[Apply:5] Тоггл найден — раскрываю поле письма...")
                     try:
                         toggle.click()
                     except Exception:
                         pass
                     page.wait_for_timeout(1000)
+                    _snap("05_after_toggle")
+                else:
+                    logging.info("[Apply:5] Тоггл не найден — поле письма должно быть уже видно")
 
-                # Ищем поле письма на странице И во всех фреймах (форма отклика
-                # hh.ru может быть в iframe). scope запоминаем для кнопки отправки.
+                logging.info("[Apply:6] Ищу textarea для сопроводительного письма...")
+                _snap("06_before_textarea_search")
                 textarea, scope = find_in_any_scope([
                     'textarea[data-qa="vacancy-response-popup-form-letter-input"]',
                     'textarea[data-qa="vacancy-response-letter-input"]',
@@ -201,32 +225,37 @@ class _ApplyMixin:
                     '[contenteditable="true"]',
                 ], timeout_ms=8000)
                 if not textarea:
+                    _snap("06_no_textarea")
                     self._diag_apply_form(page, vacancy_id)
                     return False, (
                         "Не удалось прикрепить сопроводительное письмо: поле ввода "
                         "не найдено. Похоже, hh.ru изменил форму отклика "
                         "(скрининг-вопросы / отдельная страница). Подробности — в логах."
                     )
+                logging.info("[Apply:6] textarea найдена — вставляю текст письма...")
 
-                logging.info("⌨️ Вставляю текст сопроводительного письма...")
                 text = letter_text[:3000]
                 try:
                     textarea.fill(text)
                 except Exception:
-                    # contenteditable / rich-редактор: fill не работает — печатаем.
                     try:
                         textarea.click()
                         textarea.type(text, delay=2)
                     except Exception:
                         pass
                 page.wait_for_timeout(1000)
+                _snap("07_after_fill")
+
                 try:
                     filled = (textarea.input_value() or "").strip()
                 except Exception:
                     filled = (textarea.inner_text() or "").strip()
+                logging.info(f"[Apply:7] Вставлено символов: {len(filled)}")
                 if not filled:
+                    _snap("07_fill_failed")
                     return False, "Письмо не вставилось в поле. Отклик не отправлен."
 
+                logging.info("[Apply:8] Ищу кнопку отправки отклика...")
                 submit_btn = first_visible([
                     'button[data-qa="vacancy-response-submit-popup"]',
                     '[data-qa="vacancy-response-letter-submit"]',
@@ -237,15 +266,22 @@ class _ApplyMixin:
                     'div[role="dialog"] button:has-text("Отправить")',
                 ], timeout_ms=4000, scope=scope)
                 if not submit_btn:
+                    _snap("08_no_submit_btn")
                     return False, "Не найдена кнопка отправки отклика."
 
-                logging.info("📤 Отправляю отклик вместе с письмом...")
+                logging.info("[Apply:9] Кнопка найдена — отправляю отклик...")
                 submit_btn.click()
                 page.wait_for_timeout(3000)
+                _snap("09_after_submit")
+                logging.info(f"[Apply:9] URL после отправки: {page.url}")
                 return True, "Автоотклик с сопроводительным письмом отправлен!"
 
             except Exception as e:
                 logging.error(f"[Auto-Apply] Ошибка: {e}")
+                try:
+                    _snap("error")
+                except Exception:
+                    pass
                 return False, f"Сбой автоматизации: {str(e)}"
             finally:
                 context.close()

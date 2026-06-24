@@ -9,7 +9,7 @@
   _interview.py   — mock-собеседование и отчёт
   _analytics.py   — зарплатный график, хитмап навыков, журнал
   _handbook.py    — учебник, план обучения, упражнения
-  _helpers.py     — служебные функции (_q, _sanitize_hh_html)
+  _helpers.py     — служебные функции (_q)
 
 Используйте:
     from gui_ng.controllers import AppController
@@ -22,6 +22,7 @@ from gui_ng.controllers._hh import _HHMixin
 from gui_ng.controllers._interview import _InterviewMixin
 from gui_ng.controllers._letters import _LettersMixin
 from gui_ng.controllers._scout import _ScoutMixin
+from gui_ng.controllers._settings import _SettingsMixin
 
 __all__ = ["AppController", "NiceGuiLogHandler"]
 
@@ -34,6 +35,7 @@ class AppController(
     _HHMixin,
     _LettersMixin,
     _ScoutMixin,
+    _SettingsMixin,
     _AppControllerBase,
 ):
     """Контроллер NiceGUI-приложения.
