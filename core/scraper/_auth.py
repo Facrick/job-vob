@@ -1,6 +1,54 @@
 """Авторизация hh.ru — миксин для HHParser."""
 import logging
 import random
+from pathlib import Path
+
+from core.scraper._constants import (
+    HH_LOGIN_URL,
+    HH_RESUMES_URL,
+    TIMEOUT_AUTH_MS,
+    TIMEOUT_SELECTOR_FAST_MS,
+)
+
+
+def _clear_chromium_locks(user_data_dir: str) -> None:
+    """Удаляет lock-файлы Chromium перед запуском.
+
+    При переносе профиля между машинами (Windows→Docker) Chromium оставляет
+    SingletonLock/SingletonCookie с hostname старой машины — новый процесс
+    отказывается стартовать с exitCode=21.
+
+    SingletonLock — симлинк на Linux, поэтому проверяем через os.path.lexists
+    и удаляем os.unlink (работает для симлинков независимо от цели).
+    Также чистим поддиректории профилей (Default/, Profile 1/, и т.д.).
+    """
+    import os
+
+    root = Path(user_data_dir)
+    lock_names = ("SingletonLock", "SingletonCookie", "SingletonSocket")
+
+    # Корень user_data_dir
+    dirs_to_clean = [root]
+
+    # Поддиректории профилей: Default, Profile 1, Profile 2, ...
+    if root.exists():
+        for child in root.iterdir():
+            if child.is_dir() and (
+                child.name == "Default"
+                or (child.name.startswith("Profile ") and child.name[8:].isdigit())
+            ):
+                dirs_to_clean.append(child)
+
+    for d in dirs_to_clean:
+        for name in lock_names:
+            p = d / name
+            try:
+                # lexists возвращает True даже для битых симлинков
+                if os.path.lexists(str(p)):
+                    os.unlink(str(p))
+                    logging.info(f"[Auth] Удалён lock-файл: {p}")
+            except Exception as e:
+                logging.warning(f"[Auth] Не удалось удалить {p}: {e}")
 
 
 class _AuthMixin:
@@ -29,20 +77,34 @@ class _AuthMixin:
             return self._check_logged_in(p)
 
     def _check_logged_in(self, p) -> bool:
-        """Быстрая headless-проверка авторизации.
+        """Headless-проверка авторизации по странице, требующей логина.
 
-        Переходим на страницу, доступную только авторизованным (/applicant/resumes).
-        Если нас перебросило на login — значит сессии нет.
+        Открываем /applicant/resumes — она доступна ТОЛЬКО залогиненным.
+        Если сессии нет, hh.ru редиректит на /account/login (с backurl).
+        Это надёжнее, чем искать JS-меню аккаунта на главной: оно
+        дорисовывается скриптом уже после domcontentloaded, и быстрая проверка
+        ловила пустой DOM → ложный «не авторизован».
         """
-        ctx = p.chromium.launch_persistent_context(
-            user_data_dir=str(self.user_data_dir),
-            headless=True,
-            user_agent=random.choice(self.user_agents),
-            viewport={"width": 1280, "height": 800},
-        )
+        ctx = self._launch_context(p, headless=True)
         try:
             pg = ctx.new_page()
-            pg.goto("https://hh.ru/applicant/resumes", wait_until="domcontentloaded", timeout=20000)
+            pg.goto(HH_RESUMES_URL, wait_until="domcontentloaded", timeout=TIMEOUT_AUTH_MS)
+
+            # Редирект на форму логина — сессии нет.
+            if "/account/login" in pg.url:
+                return False
+
+            # Остались на странице резюме — даём JS дорисовать и проверяем
+            # маркер залогиненного пользователя как подтверждение.
+            for sel in self._LOGGED_IN_SELECTORS:
+                try:
+                    pg.wait_for_selector(sel, timeout=TIMEOUT_SELECTOR_FAST_MS)
+                    return True
+                except Exception:
+                    continue
+
+            # Маркеры меню не появились, но и на логин не выкинуло — раз
+            # /applicant/resumes открылась без редиректа, считаем сессию живой.
             return "/account/login" not in pg.url
         except Exception as e:
             logging.warning(f"[Auth-Check] Не удалось проверить сессию: {e}")
@@ -58,15 +120,10 @@ class _AuthMixin:
         будет доступна следующим headless-запускам.
         """
         logging.info("🔑 Открываю окно браузера для входа на hh.ru...")
-        ctx = p.chromium.launch_persistent_context(
-            user_data_dir=str(self.user_data_dir),
-            headless=False,
-            user_agent=random.choice(self.user_agents),
-            viewport={"width": 1280, "height": 800},
-        )
+        ctx = self._launch_context(p, headless=False)
         try:
             pg = ctx.new_page()
-            pg.goto("https://hh.ru/account/login", wait_until="domcontentloaded", timeout=20000)
+            pg.goto(HH_LOGIN_URL, wait_until="domcontentloaded", timeout=TIMEOUT_AUTH_MS)
             logging.info("⏳ Войдите в аккаунт hh.ru в открывшемся окне (у вас 3 минуты)...")
             pg.wait_for_url(
                 lambda url: "/account/login" not in url,

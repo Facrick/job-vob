@@ -12,19 +12,51 @@ from core.handbook import QAHandbook
 from core.interview_engine import MockInterviewEngine
 from core.paths import user_path
 
+# Ставится в True после первой настройки file-логгера в этом процессе.
+# Защищает от навешивания дублирующих RotatingFileHandler при каждом коннекте.
+_FILE_LOG_READY = False
+
+
+def _find_resume() -> str:
+    """Возвращает путь к существующему файлу резюме в user_path, приоритет по расширению."""
+    for ext in (".pdf", ".docx", ".doc", ".txt", ".rtf"):
+        p = user_path(f"resume{ext}")
+        if p.exists():
+            return str(p)
+    return str(user_path("resume.pdf"))
+
 
 class NiceGuiLogHandler(logging.Handler):
-    """Дописывает логи в ui.log-элемент. push() безопасен из любого контекста."""
+    """Дописывает логи в ui.log-элемент.
 
-    def __init__(self, log_element):
+    Защита от бесконечной рекурсии: push() для мёртвого клиента заставляет
+    NiceGUI вызвать log.warning(), который снова попадает сюда → push → … .
+    Поэтому: (1) игнорируем логи самого nicegui, (2) реентрант-флаг гасит
+    повторный вход в emit во время текущего push().
+    """
+
+    def __init__(self, log_element, client_id=None):
         super().__init__()
         self.log_element = log_element
+        self._emitting = False
+        self._client_id = client_id
 
     def emit(self, record: logging.LogRecord):
+        if record.name.startswith("nicegui"):
+            return
+        if self._emitting:
+            return
+        self._emitting = True
         try:
+            from nicegui.client import Client
+            client_id = getattr(self, "_client_id", None)
+            if client_id is not None and client_id not in Client.instances:
+                return
             self.log_element.push(self.format(record))
         except Exception:
             pass
+        finally:
+            self._emitting = False
 
 
 class _AppControllerBase:
@@ -37,7 +69,7 @@ class _AppControllerBase:
         self.config = AppConfig()
         self.repo = VacancyRepository()
         self.exporter = DataExporter(self.repo)
-        self.resume = ResumeEntity(str(user_path("resume.pdf")))
+        self.resume = ResumeEntity(str(_find_resume()))
         self.handbook = QAHandbook()
         self.exercises = ExerciseBank()
         self._analyzer: LetterAnalyzer | None = None
@@ -45,8 +77,15 @@ class _AppControllerBase:
 
         self.selected_vacancy_id: str | None = None
         self.mock_chat_history: list = []
+
+        # Общий кэш статуса авторизации hh.ru: CRM и Аналитика читают его,
+        # чтобы не поднимать headless-браузер на каждую проверку/сбор.
+        self._hh_auth_cached: bool | None = None
+        self._hh_auth_checked_at: float = 0.0
+        self._hh_auth_force_recheck = False
         self._suppress_status_change = False
         self._suppress_mode_change = False
+        self._search_cancelled = False
 
         # UI-элементы (заполняются билдерами вкладок).
         self.el: dict = {}
@@ -74,40 +113,92 @@ class _AppControllerBase:
 
     # ── инициализация после сборки UI ────────────────────────────
     def on_ready(self):
+        from nicegui import context as _ctx
+        self._client_id = _ctx.client.id
         self._setup_logging_bridge()
         self._init_salary_field()
         self.refresh_table_data()
         self.load_handbook()
         self._reset_topic_pane()
         self._refresh_resume_label()
+        self._refresh_settings_ui()
         ui.timer(1.0, self._check_hh_auth_async, once=True)
         self._restore_autosync_state()
+        self._autoload_analytics()
+
+    def _autoload_analytics(self):
+        """Сразу строит timeline и хитмап навыков. Зарплаты соискателей — по кнопке."""
+        for draw in (self.draw_timeline, self.draw_skill_heatmap):
+            try:
+                draw()
+            except Exception as ex:
+                logging.warning(f"Автозагрузка аналитики ({draw.__name__}): {ex}")
 
     def _setup_logging_bridge(self):
+        # on_ready() вызывается на КАЖДОЕ открытие страницы (каждый клиент).
+        # File-handler должен ставиться один раз на процесс — иначе на тот же
+        # app.log вешается N хендлеров с открытыми дескрипторами, и ротация
+        # падает с PermissionError (файл залочен самим же приложением на Windows).
         log_dir = user_path("logs")
         log_dir.mkdir(parents=True, exist_ok=True)
         root = logging.getLogger()
         root.setLevel(logging.DEBUG)
-        for h in root.handlers[:]:
-            root.removeHandler(h)
-        fh = RotatingFileHandler(
-            log_dir / "app.log", maxBytes=1024 * 1024, backupCount=3, encoding="utf-8"
-        )
-        fh.setFormatter(
-            logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S")
-        )
-        root.addHandler(fh)
+
+        global _FILE_LOG_READY
+        if not _FILE_LOG_READY:
+            # Снимаем только ранее добавленные нами file-хендлеры (на случай reload)
+            for h in root.handlers[:]:
+                if isinstance(h, RotatingFileHandler):
+                    h.close()
+                    root.removeHandler(h)
+            fh = RotatingFileHandler(
+                log_dir / "app.log", maxBytes=1024 * 1024, backupCount=3,
+                encoding="utf-8", delay=True,
+            )
+            fh.setFormatter(
+                logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S")
+            )
+            root.addHandler(fh)
+            _FILE_LOG_READY = True
+            logging.info("Система логирования инициализирована.")
+
+        # UI-handler привязан к конкретному ui.log этого клиента — пересоздаём,
+        # сняв предыдущий, чтобы не плодить дубли при переоткрытии страницы.
         if self.el.get("logs"):
-            ui_handler = NiceGuiLogHandler(self.el["logs"])
+            for h in root.handlers[:]:
+                if isinstance(h, NiceGuiLogHandler):
+                    root.removeHandler(h)
+            ui_handler = NiceGuiLogHandler(self.el["logs"], client_id=self._client_id)
             ui_handler.setFormatter(
                 logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", "%H:%M:%S")
             )
             root.addHandler(ui_handler)
-        logging.info("Система логирования инициализирована.")
 
     def switch_to_tab(self, name: str):
         if self.tabs is not None:
             self.tabs.set_value(name)
+
+    # ── прогресс-индикаторы ───────────────────────────────────────
+    def _show_progress(self, label: str, *, key_progress: str = "letter_progress",
+                       key_status: str = "letter_status") -> None:
+        """Показывает прогресс-бар и статусный лейбл в текущей вкладке."""
+        p = self.el.get(key_progress)
+        s = self.el.get(key_status)
+        if p:
+            p.set_visibility(True)
+        if s:
+            s.set_text(label)
+            s.set_visibility(True)
+
+    def _hide_progress(self, *, key_progress: str = "letter_progress",
+                       key_status: str = "letter_status") -> None:
+        """Скрывает прогресс-бар и статусный лейбл."""
+        p = self.el.get(key_progress)
+        s = self.el.get(key_status)
+        if p:
+            p.set_visibility(False)
+        if s:
+            s.set_visibility(False)
 
     # ── диалоги / тосты ──────────────────────────────────────────
     def _show_error(self, message: str):
@@ -133,14 +224,17 @@ class _AppControllerBase:
     def _salary_color(self, s_min, s_max) -> str:
         expectation = int(self.config.get("salary_expectation") or 0)
         if not expectation or (s_min is None and s_max is None):
-            return "#9aa0b4"
+            return "#a1a1aa"
         upper = s_max if s_max is not None else s_min
         lower = s_min if s_min is not None else s_max
+        # Приглушённые сигналы, чтобы з/п не «светофорила» в таблице:
+        # выше ожидания → мягкий зелёный, частично → нейтрально-светлый,
+        # ниже → приглушённый красный (не алерт).
         if lower >= expectation:
-            return "#66bb6a"
+            return "#6ee7b7"   # выше ожидания — спокойный мятный
         if upper >= expectation:
-            return "#ff8f00"
-        return "#ef5350"
+            return "#d4d4d8"   # в диапазоне — нейтральный светлый
+        return "#a86b6b"       # ниже — тусклый красноватый, не кричит
 
     def _safe_resume_text(self) -> str:
         try:
