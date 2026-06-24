@@ -2,7 +2,7 @@
 from nicegui import ui
 
 from core.handbook import TRACKS
-from gui_ng.views._shared import _card, _scroll, _split
+from gui_ng.views._shared import _card, _scroll, _split, _section_head
 
 
 def build_handbook_tab(c):
@@ -23,23 +23,23 @@ def build_handbook_tab(c):
                         value="sections",
                         on_change=lambda e: c.on_mode_toggle(e.value),
                     ).props(
-                        "no-caps unelevated spread toggle-color=primary size=sm"
-                    ).classes("w-full")
+                        "no-caps unelevated spread size=sm"
+                    ).classes("w-full vob-hb-toggle")
                     with ui.row().classes("w-full items-center gap-2 no-wrap"):
                         el["hb_progress_label"] = ui.label("Прогресс 0% (0 из 0)").classes(
                             "text-xs vob-muted"
                         )
                     el["hb_progress"] = ui.linear_progress(value=0, show_value=False).props(
-                        "color=positive"
+                        "color=primary"
                     )
                     el["hb_search"] = ui.input(
-                        placeholder="Поиск по темам..."
+                        label="Поиск по темам"
                     ).props("dense outlined clearable").classes("w-full").on(
                         "input", lambda _: c.handle_handbook_search()
                     )
                     ui.button(
                         "Добавить тему", icon="add", on_click=c.handle_handbook_add_new
-                    ).props("outline dense no-caps").classes("w-full")
+                    ).props("flat dense no-caps").classes("vob-btn-accent w-full")
                     el["hb_tree"] = _scroll("gap-1")
 
             # ── Правая панель: контент ─────────────────────────────────
@@ -51,7 +51,7 @@ def build_handbook_tab(c):
                         with ui.row().classes("w-full items-center gap-2"):
                             el["hb_topic_title"] = ui.label("").classes("text-base font-bold")
                             el["hb_topic_badge"] = ui.label("").classes("text-xs").style(
-                                "color:#ffca28"
+                                "color:#c4b5fd"
                             )
                             ui.space()
                             el["hb_btn_studied"] = ui.button(
@@ -100,7 +100,7 @@ def build_handbook_tab(c):
                             )
                             with ui.row().classes("w-full items-center gap-2 no-wrap"):
                                 el["hb_instr"] = ui.input(
-                                    placeholder="Что поправить? напр. «добавь пример кода»"
+                                    label="Что поправить? напр. «добавь пример кода»"
                                 ).props("dense outlined").classes("flex-grow")
                                 el["hb_btn_ai_fix"] = ui.button(
                                     "Поправить ИИ", icon="auto_awesome",
@@ -109,7 +109,7 @@ def build_handbook_tab(c):
                             with ui.row().classes("gap-2"):
                                 ui.button(
                                     "Сохранить", icon="save", on_click=c.handle_handbook_save
-                                ).props("no-caps")
+                                ).props("no-caps flat").classes("vob-btn-accent")
                                 ui.button(
                                     "Отмена", icon="close", on_click=c.handle_handbook_cancel
                                 ).props("outline no-caps")
@@ -118,9 +118,7 @@ def build_handbook_tab(c):
                     # Панель «План обучения»
                     with ui.column().classes("w-full h-full no-wrap gap-2") as plan_box:
                         el["hb_plan_box"] = plan_box
-                        with ui.row().classes("w-full items-center gap-2"):
-                            ui.icon("checklist", color="primary")
-                            ui.label("План обучения").classes("text-base font-bold")
+                        _section_head("checklist", "План обучения", "#a78bfa")
                         ui.separator()
                         el["hb_plan_list"] = _scroll("gap-1")
                     el["hb_plan_box"].set_visibility(False)
@@ -129,7 +127,8 @@ def build_handbook_tab(c):
                     with ui.column().classes("w-full h-full no-wrap gap-2") as ex_box:
                         el["hb_exercise_box"] = ex_box
                         with ui.row().classes("w-full items-center gap-2 no-wrap"):
-                            ui.icon("fitness_center", color="primary")
+                            with ui.element("div").classes("vob-sec-icon").style("--vob-accent:#fb7a3c"):
+                                ui.icon("fitness_center")
                             el["ex_topic_label"] = ui.label("Упражнения").classes(
                                 "text-base font-bold truncate"
                             )
@@ -163,7 +162,7 @@ def build_handbook_tab(c):
                                     el["ex_btn_check"] = ui.button(
                                         "Проверить", icon="task_alt",
                                         on_click=c.handle_exercise_check,
-                                    ).props("no-caps")
+                                    ).props("no-caps flat").classes("vob-btn-accent")
                                 with ui.column().classes("w-full no-wrap gap-1") as ex_result:
                                     el["ex_result"] = ex_result
                                     with ui.row().classes("items-center gap-2"):

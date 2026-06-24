@@ -95,15 +95,14 @@ class HHApiClient:
         progress_callback: Callable | None = None,
         on_vacancy: Callable | None = None,
     ) -> list[dict]:
-        if max_vacancies is None:
-            max_vacancies = self.config.get("max_vacancies_per_search")
-
         logging.info(f"🌐 API hh.ru: поиск «{text}»")
         items: list[dict] = []
-        for page in range(page_limit):
+        # hh.ru отдаёт максимум 2000 вакансий (100 страниц × 20), но page_limit
+        # может дополнительно ограничить если нужно. 0 = без ограничения.
+        max_pages = page_limit if page_limit > 0 else 100
+        for page in range(max_pages):
             params = {
                 "text": text,
-                "search_field": "name",
                 "area": area,
                 "experience": experience,
                 "period": period,
@@ -115,9 +114,9 @@ class HHApiClient:
             data = self._get_json("/vacancies", params)
             for it in data.get("items", []):
                 items.append(self._map_list_item(it))
-                if len(items) >= max_vacancies:
-                    break
-            if len(items) >= max_vacancies or page + 1 >= data.get("pages", 1):
+            if page + 1 >= data.get("pages", 1):
+                break
+            if max_vacancies and len(items) >= max_vacancies:
                 break
 
         total = len(items)

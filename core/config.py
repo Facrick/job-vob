@@ -35,12 +35,11 @@ class AppConfig:
             Path(config_path) if config_path else user_path("data/settings.json")
         )
         self.defaults = {
-            "llm_model": "llama-3.3-70b-versatile",
-            "llm_fallback_model": "llama-3.1-8b-instant",
-            "llm_analysis_model": "llama-3.1-8b-instant",  # анализ вакансии — быстрая модель
+            "llm_model": "meta-llama/llama-3.3-70b-instruct",
+            "llm_fallback_model": "meta-llama/llama-3.1-8b-instruct",
+            "llm_analysis_model": "meta-llama/llama-3.1-8b-instruct",  # анализ вакансии — быстрая модель
             "llm_temperature_generation": 0.15,
             "llm_temperature_adjustment": 0.3,
-            "use_official_api": True,  # основной источник — api.hh.ru (фолбэк: парсер)
             "browser_headless": True,  # анализ вакансий без видимого окна Chrome
             "browser_timeout_ms": 40000,
             "human_mouse_steps_min": 10,
@@ -49,6 +48,9 @@ class AppConfig:
             "base_delay_ms_max": 3000,
             "max_vacancies_per_search": 50,
             "salary_expectation": 0,
+            # Сколько карточек вакансий разбирать параллельно (вкладок Chromium).
+            # Выше → быстрее, но больше нагрузка и риск капчи. 6 — разумный баланс.
+            "search_concurrency": 6,
         }
         self.settings: dict = {}
         self.load_config()

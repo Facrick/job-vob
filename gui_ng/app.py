@@ -16,65 +16,92 @@ from gui_ng import views  # noqa: F401 – re-exported from gui_ng/views/__init_
 from gui_ng.controller import AppController
 from gui_ng.theme import apply_theme
 
-# Видимый маркер сборки — бампается при каждой правке, чтобы было видно,
-# что запущена свежая версия (а не старый процесс при reload=False).
-BUILD_TAG = "build 23 · shadcn-redesign"
+BUILD_TAG = "build 27"
+APP_TITLE = "Job VOB · IT Career OS"
 
+# (name, label, icon, builder, alpha, section)
+# section: str = заголовок секции перед этим пунктом, None = без заголовка
 _TABS = [
-    ("scout", "CRM", "search", views.build_scout_tab),
-    ("letters", "Письма", "mail_outline", views.build_letters_tab),
-    ("interview", "Интервью", "record_voice_over", views.build_interview_tab),
-    ("analytics", "Аналитика", "bar_chart", views.build_analytics_tab),
-    ("handbook", "Учебник", "menu_book", views.build_handbook_tab),
-    ("logs", "Логи", "terminal", views.build_logs_tab),
+    ("scout",     "CRM",       "grid_view",        views.build_scout_tab,     False, "ANALYTICS"),
+    ("letters",   "Письма",    "mail_outline",      views.build_letters_tab,   False, None),
+    ("interview", "Интервью",  "record_voice_over", views.build_interview_tab, False, None),
+    ("analytics", "Аналитика", "bar_chart",         views.build_analytics_tab, True,  None),
+    ("handbook",  "Учебник",   "menu_book",         views.build_handbook_tab,  True,  None),
+    ("logs",      "Логи",      "terminal",          views.build_logs_tab,      False, "TOOLS"),
+    ("settings",  "Настройки", "settings",          views.build_settings_tab,  False, None),
 ]
 
 
 @ui.page("/")
 def index():
     apply_theme()
+
+    ui.add_body_html(
+        "<script>"
+        "setTimeout(function(){"
+        "  if(!document.querySelector('.vob-rail')){"
+        "    console.warn('[watchdog] UI не отрендерился — перезагрузка');"
+        "    window.location.reload();"
+        "  }"
+        "}, 4000);"
+        "</script>"
+    )
+
     c = AppController()
 
-    # Убираем стандартные отступы/зазоры контейнера NiceGUI — иначе h-screen
-    # суммируется с padding и страница выходит за вьюпорт (лишний скролл).
     ui.query(".nicegui-content").style(
         "height:100vh; padding:0; gap:0; overflow:hidden; flex-wrap:nowrap"
     )
 
-    # Оболочка приложения: слева — навигация, справа — контент.
     with ui.row().classes("w-full h-full no-wrap gap-0"):
-        # ── Сайдбар ───────────────────────────────────────────
+        # ── Сайдбар ───────────────────────────────────────────────────
         with ui.column().classes("vob-rail h-full no-wrap gap-0").style(
-            "width:216px;min-width:216px;"
-            "background:#141419;"
-            "border-right:1px solid #26262f;"
+            "width:200px;min-width:200px;position:relative;z-index:5;"
+            "background:rgba(14,14,19,.92);"
+            "backdrop-filter:blur(16px) saturate(1.1);"
+            "border-right:1px solid rgba(255,255,255,.06);"
             "transition:width .18s cubic-bezier(.4,0,.2,1)"
         ) as sidebar:
-            # ── Логотип / заголовок ────────────────────────────
+
+            # Логотип
             with ui.row().classes("items-center gap-2 px-3 py-3 no-wrap w-full"):
                 ui.button(icon="menu", on_click=lambda: _toggle_rail()).props(
-                    "flat round dense"
-                ).style("color:#71717a").tooltip("Свернуть/развернуть")
+                    "flat dense"
+                ).classes("vob-rail-burger").tooltip("Свернуть/развернуть")
                 with ui.column().classes("gap-0 vob-rail-hide"):
-                    ui.label("Job VOB").classes(
-                        "text-sm font-semibold leading-tight"
-                    ).style("color:#fafafa;letter-spacing:-.01em")
-                    ui.label("QA Career OS").classes(
-                        "text-xs leading-tight"
-                    ).style("color:#52525b")
-            ui.separator().style("opacity:.4")
-            # ── Навигационные вкладки ──────────────────────────
+                    ui.label("Job VOB").classes("text-sm font-semibold leading-tight").style(
+                        "color:#fafafa;letter-spacing:-.01em"
+                    )
+                    ui.label("IT Career OS").classes("text-xs leading-tight").style(
+                        "color:#52525b"
+                    )
+
+            ui.separator().style("opacity:.3;margin:0 12px")
+
+            # Навигация с секциями
             with ui.tabs().props(
                 "vertical no-caps inline-label active-color=primary "
                 "indicator-color=transparent"
-            ).classes("w-full flex-grow").style("padding:4px 0") as tabs:
-                for name, label, icon, _ in _TABS:
-                    ui.tab(name, label=label, icon=icon).classes("justify-start")
+            ).classes("w-full flex-grow").style("padding:6px 0") as tabs:
+
+                current_section = None
+                for name, label, icon, _, alpha, section in _TABS:
+                    if section and section != current_section:
+                        current_section = section
+                        ui.label(section).classes("vob-rail-section vob-rail-hide")
+                    with ui.tab(name, label=label, icon=icon).classes("justify-start"):
+                        if alpha:
+                            ui.label("alpha").classes(
+                                "vob-alpha-chip vob-rail-hide"
+                            ).tooltip("Экспериментальная функция")
+
             c.tabs = tabs
-            ui.separator().style("opacity:.4")
-            # ── Build tag ──────────────────────────────────────
-            ui.label("build 23").classes("vob-rail-hide").style(
-                "font-size:11px;color:#3f3f46;padding:6px 14px;letter-spacing:.03em"
+
+            ui.separator().style("opacity:.25;margin:0 12px")
+
+            ui.label(BUILD_TAG).classes("vob-rail-hide").style(
+                "font-size:10px;color:#3f3f46;padding:8px 14px 10px;"
+                "letter-spacing:.03em;white-space:nowrap;overflow:hidden"
             )
 
         rail = {"collapsed": False}
@@ -86,11 +113,11 @@ def index():
                 remove="" if rail["collapsed"] else "vob-collapsed",
             )
 
-        # ── Контент ───────────────────────────────────────────
+        # ── Контент ───────────────────────────────────────────────────
         with ui.tab_panels(tabs, value="scout").props("vertical keep-alive").classes(
             "flex-grow h-full"
-        ).style("background:#09090b"):
-            for name, _, _, builder in _TABS:
+        ).style("background:transparent"):
+            for name, _, _, builder, _alpha, _section in _TABS:
                 with ui.tab_panel(name).classes("p-3 h-full"):
                     builder(c)
 
@@ -101,12 +128,11 @@ def run_app():
     dotenv_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
     load_dotenv(dotenv_path=dotenv_path)
 
-    # Резервная копия БД — одна в день, хранит последние 7. Ошибка не прерывает запуск.
     backup_database(user_path("data/app.db"))
 
     native = os.getenv("VOB_BROWSER", "").lower() not in ("1", "true", "yes")
     kwargs = dict(
-        title="QA Smart Assistant Pro | Job CRM",
+        title=APP_TITLE,
         reload=False,
         storage_secret="job-vob-ng",
     )
@@ -114,8 +140,6 @@ def run_app():
     if port:
         kwargs["port"] = int(port)
     if native:
-        # Иконку окна Windows winforms-бэкенд pywebview берёт из start(icon=...);
-        # прозрачный .ico = пустой значок в заголовке (иначе берётся иконка python.exe).
         blank_ico = os.path.join(os.path.dirname(__file__), "assets", "blank.ico")
         if os.path.isfile(blank_ico):
             app.native.start_args["icon"] = blank_ico

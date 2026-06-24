@@ -12,7 +12,7 @@ class VacancyRepository:
         self.db_path = str(db_path) if db_path else str(user_path("data/app.db"))
         self.init_db()
 
-    def init_db(self):
+    def init_db(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -59,6 +59,14 @@ class VacancyRepository:
                     FOREIGN KEY(vacancy_id) REFERENCES vacancies(id)
                 )
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS salary_stats (
+                    query TEXT PRIMARY KEY,
+                    collected_at TEXT NOT NULL,
+                    resume_count INTEGER NOT NULL,
+                    data_json TEXT NOT NULL
+                )
+            """)
             conn.commit()
 
     def get_vacancy_by_id(self, vacancy_id: str) -> dict | None:
@@ -69,7 +77,7 @@ class VacancyRepository:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def update_details(self, vacancy_id: str, details: dict):
+    def update_details(self, vacancy_id: str, details: dict) -> None:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute("""
@@ -85,7 +93,7 @@ class VacancyRepository:
             ))
             conn.commit()
 
-    def save_vacancies(self, vacancies: list[dict]):
+    def save_vacancies(self, vacancies: list[dict]) -> None:
         from datetime import datetime
         now = datetime.now().isoformat(timespec="seconds")
         with sqlite3.connect(self.db_path) as conn:
@@ -109,21 +117,21 @@ class VacancyRepository:
                 ))
             conn.commit()
 
-    def update_notes(self, vacancy_id: str, notes_text: str):
+    def update_notes(self, vacancy_id: str, notes_text: str) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "UPDATE vacancies SET notes = ? WHERE id = ?", (notes_text, vacancy_id)
             )
             conn.commit()
 
-    def update_match_score(self, vacancy_id: str, score: int | None):
+    def update_match_score(self, vacancy_id: str, score: int | None) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "UPDATE vacancies SET match_score = ? WHERE id = ?", (score, vacancy_id)
             )
             conn.commit()
 
-    def update_status(self, vacancy_id: str, status: str):
+    def update_status(self, vacancy_id: str, status: str) -> None:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -153,7 +161,7 @@ class VacancyRepository:
             cursor.execute("DELETE FROM vacancies WHERE id = ?", (vacancy_id,))
             conn.commit()
 
-    def clear_discovered_vacancies(self):
+    def clear_discovered_vacancies(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -164,7 +172,7 @@ class VacancyRepository:
 
     _MAX_LETTER_VERSIONS = 5
 
-    def save_cover_letter(self, vacancy_id: str, letter: str, recs: str):
+    def save_cover_letter(self, vacancy_id: str, letter: str, recs: str) -> None:
         from datetime import datetime
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
@@ -226,16 +234,6 @@ class VacancyRepository:
             )
             return [dict(row) for row in cursor.fetchall()]
 
-    def count_cover_letters(self) -> int:
-        """Сколько вакансий имеют сохранённое сопроводительное письмо."""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT COUNT(*) FROM cover_letters "
-                "WHERE letter_text IS NOT NULL AND TRIM(letter_text) <> ''"
-            )
-            return int(cursor.fetchone()[0])
-
     def get_cover_letter(self, vacancy_id: str) -> dict | None:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
@@ -246,7 +244,7 @@ class VacancyRepository:
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def save_mock_interview(self, vacancy_id: str, history_list: list):
+    def save_mock_interview(self, vacancy_id: str, history_list: list) -> None:
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.cursor()
             cursor.execute(
@@ -265,12 +263,54 @@ class VacancyRepository:
             row = cursor.fetchone()
             return json.loads(row[0]) if row else None
 
+    def save_salary_stats(self, query: str, stats: dict) -> None:
+        from datetime import datetime
+        with sqlite3.connect(self.db_path) as conn:
+            conn.cursor().execute(
+                "INSERT OR REPLACE INTO salary_stats (query, collected_at, resume_count, data_json)"
+                " VALUES (?, ?, ?, ?)",
+                (
+                    query.lower().strip(),
+                    datetime.now().isoformat(timespec="seconds"),
+                    stats.get("count", 0),
+                    json.dumps(stats, ensure_ascii=False),
+                ),
+            )
+            conn.commit()
+
+    def get_salary_stats(self, query: str) -> dict | None:
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT data_json, collected_at FROM salary_stats WHERE query = ?",
+                (query.lower().strip(),),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            data = json.loads(row[0])
+            data["collected_at"] = row[1]
+            return data
+
+    def list_salary_stats(self) -> list[dict]:
+        """Возвращает список всех сохранённых снимков (query, collected_at, count)."""
+        with sqlite3.connect(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT query, collected_at, resume_count FROM salary_stats"
+                " ORDER BY collected_at DESC"
+            )
+            return [
+                {"query": r[0], "collected_at": r[1], "resume_count": r[2]}
+                for r in cursor.fetchall()
+            ]
+
 
 class DataExporter:
     def __init__(self, repo: VacancyRepository):
         self.repo = repo
 
-    def export_discovered_to_csv(self, file_path: str):
+    def export_discovered_to_csv(self, file_path: str) -> tuple[bool, str]:
         try:
             vacs = self.repo.get_vacancies_filtered("all")
             with open(file_path, "w", newline="", encoding="utf-8") as f:

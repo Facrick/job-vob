@@ -1,7 +1,7 @@
 """Вкладка 2 — Письма / автоотклик."""
 from nicegui import ui
 
-from gui_ng.views._shared import _card, _split
+from gui_ng.views._shared import _card, _split, _section_head
 
 
 def build_letters_tab(c):
@@ -10,7 +10,8 @@ def build_letters_tab(c):
         # ── Панель выбора вакансии ────────────────────────────────────────────
         with _card():
             with ui.row().classes("w-full items-center gap-2 no-wrap"):
-                ui.icon("work_outline", color="primary")
+                with ui.element("div").classes("vob-sec-icon").style("--vob-accent:#60a5fa"):
+                    ui.icon("work_outline")
                 ui.label("Вакансия:").classes("text-sm font-semibold").style(
                     "white-space:nowrap"
                 )
@@ -35,42 +36,54 @@ def build_letters_tab(c):
         with _split(60) as sp:
             with sp.before:
                 with _card("h-full"):
-                    with ui.row().classes("w-full items-center gap-2"):
-                        ui.icon("description", color="primary")
-                        ui.label("Текст письма").classes("text-base font-semibold")
+                    _section_head("description", "Текст письма", "#a78bfa")
                     el["text_letter"] = ui.textarea(
-                        placeholder="Сопроводительное письмо появится здесь после генерации…"
-                    ).props("outlined").classes("w-full flex-grow vob-fill")
+                    ).props("outlined").classes("w-full flex-grow vob-fill").on(
+                        "blur", c.handle_letter_text_blur
+                    )
             with sp.after:
                 with _card("h-full"):
-                    with ui.row().classes("items-center gap-2"):
-                        ui.icon("lightbulb", color="primary")
-                        ui.label("Рекомендации ИИ").classes("text-base font-semibold")
+                    _section_head("lightbulb", "Рекомендации ИИ", "#fb7a3c")
                     el["text_recs"] = ui.textarea(
-                        placeholder="Рекомендации ИИ появятся здесь после генерации…"
                     ).props("outlined readonly").classes("w-full flex-grow vob-fill")
 
-        # ── Панель действий ───────────────────────────────────────────────────
-        with _card():
+        # ── Панель действий (тулбар) ──────────────────────────────────────────
+        with _card().classes("vob-action-bar"):
+            # Ряд 1: создание/правка письма — генерация + поле фидбека + исправить
             with ui.row().classes("w-full items-center gap-2 no-wrap"):
+                el["btn_generate_letters"] = ui.button(
+                    "Сгенерировать", icon="auto_awesome",
+                    on_click=lambda: c.handle_generation("btn_generate_letters"),
+                ).props("no-caps flat").classes("vob-btn-accent vob-act-btn").tooltip(
+                    "ИИ сгенерирует письмо по выбранной вакансии и резюме"
+                )
                 el["input_feedback"] = ui.input(
-                    placeholder="Что исправить?"
+                    placeholder="Что исправить в письме?"
                 ).props("dense outlined").classes("flex-grow").on(
                     "keydown.enter", c.handle_feedback
                 )
                 el["btn_feedback"] = ui.button(
                     "Исправить", icon="edit", on_click=c.handle_feedback
-                ).props("outline no-caps")
+                ).props("outline no-caps dense").classes("vob-act-btn")
+
+            # Ряд 2: вспомогательные действия слева + финальная отправка справа
+            with ui.row().classes("w-full items-center gap-2 no-wrap"):
                 el["btn_copy"] = ui.button(
                     "Копировать", icon="content_copy", on_click=c.copy_letter
-                ).props("outline no-caps").tooltip("Скопировать письмо в буфер")
+                ).props("outline no-caps dense").classes("vob-act-btn").tooltip(
+                    "Скопировать письмо в буфер"
+                )
                 el["btn_letter_history"] = ui.button(
                     "История", icon="history", on_click=c.handle_letter_history
-                ).props("outline no-caps").tooltip("Просмотреть прошлые версии письма")
+                ).props("outline no-caps dense").classes("vob-act-btn").tooltip(
+                    "Просмотреть прошлые версии письма"
+                )
                 el["btn_score_letter"] = ui.button(
                     "Оценить", icon="grade", on_click=c.handle_score_letter
-                ).props("outline no-caps").tooltip("ИИ оценит письмо по 4 критериям")
-            el["btn_auto_apply"] = ui.button(
-                "Отправить автоотклик", icon="send", on_click=c.handle_auto_apply,
-                color="positive",
-            ).props("no-caps").classes("w-full")
+                ).props("outline no-caps dense").classes("vob-act-btn").tooltip(
+                    "ИИ оценит письмо по 4 критериям"
+                )
+                ui.space()
+                el["btn_auto_apply"] = ui.button(
+                    "Отправить автоотклик", icon="send", on_click=c.handle_auto_apply,
+                ).props("no-caps flat").classes("vob-btn-accent vob-act-btn")

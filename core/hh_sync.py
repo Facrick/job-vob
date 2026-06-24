@@ -128,11 +128,35 @@ def sync_negotiations(repo, negotiations: list[dict]) -> SyncResult:
         if new_status is None:
             if hh_text:
                 result.unrecognized.append(hh_text)
+                logging.warning(
+                    f"[Sync] {title} ({vid}): нераспознанный статус hh.ru «{hh_text}»"
+                )
+            else:
+                logging.info(
+                    f"[Sync] {title} ({vid}): статус не определён (пустая строка) — пропуск"
+                )
             continue
 
         vacancy = repo.get_vacancy_by_id(vid)
         if vacancy is None:
-            result.not_in_crm += 1
+            # Вакансия есть на hh.ru но не в CRM — добавляем с минимальными данными
+            # и сразу проставляем статус из hh.ru.
+            repo.save_vacancies([{
+                "id": vid,
+                "title": title,
+                "company": company,
+                "status": str(new_status),
+            }])
+            logging.info(
+                f"[Sync] {title} ({vid}): добавлена в CRM со статусом «{new_status}»"
+            )
+            result.updated.append({
+                "vacancy_id": vid,
+                "title": title,
+                "company": company,
+                "old": "—",
+                "new": str(new_status),
+            })
             continue
 
         current = str(vacancy.get("status") or VacancyStatus.DISCOVERED.value)
@@ -147,8 +171,9 @@ def sync_negotiations(repo, negotiations: list[dict]) -> SyncResult:
         # любого предыдущего этапа; «Новая»/«Отклик» не понижают «Интервью».
         if _STATUS_RANK.get(new_str, 0) <= _STATUS_RANK.get(current, 0):
             result.skipped_back += 1
-            logging.debug(
-                f"[Sync] {title} ({vid}): пропуск, {new_str} не выше {current}"
+            logging.info(
+                f"[Sync] {title} ({vid}): пропуск — hh.ru даёт «{new_str}» (ранг {_STATUS_RANK.get(new_str,0)}), "
+                f"CRM уже «{current}» (ранг {_STATUS_RANK.get(current,0)})"
             )
             continue
 

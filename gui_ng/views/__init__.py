@@ -9,6 +9,7 @@ from gui_ng.views.interview import build_interview_tab
 from gui_ng.views.letters import build_letters_tab
 from gui_ng.views.logs import build_logs_tab
 from gui_ng.views.scout import build_scout_tab
+from gui_ng.views.settings import build_settings_tab
 
 __all__ = [
     "build_scout_tab",
@@ -17,4 +18,5 @@ __all__ = [
     "build_analytics_tab",
     "build_handbook_tab",
     "build_logs_tab",
+    "build_settings_tab",
 ]

@@ -96,7 +96,7 @@ class _HandbookMixin:
                 done, total = self.handbook.section_progress(section_name)
                 with ui.expansion(
                     f"{section_name}  ({done}/{total})", value=bool(q) or only_fav
-                ).classes("w-full").props("dense"):
+                ).classes("w-full vob-hb-section").props("dense"):
                     for it in shown:
                         self._hb_tile(section_name, it)
             if not any_shown:
@@ -126,7 +126,7 @@ class _HandbookMixin:
             "cursor-pointer text-sm py-1 px-2 rounded hover:bg-white/5 w-full"
         )
         if check:
-            lbl.style("color:#81c784")
+            lbl.style("color:#6ee7b7")  # изучено — спокойный мятный (в гамме)
         lbl.on("click", lambda _, d=data: self._on_tile_click(d))
 
     def _on_tile_click(self, data: dict):
@@ -399,7 +399,7 @@ class _HandbookMixin:
             return
         best = prog.get("best_score", 0)
         attempts = prog.get("attempts", 0)
-        color = "#66bb6a" if prog.get("passed") else "#ff8f00"
+        color = "#4ade80" if prog.get("passed") else "#fb923c"
         mark = "✓ " if prog.get("passed") else ""
         badge.set_text(f"{mark}Лучший: {best}/100 · попыток: {attempts}")
         badge.style(
@@ -498,7 +498,7 @@ class _HandbookMixin:
         verdict = data.get("verdict") or (
             "Зачтено" if score >= 70 else "Частично" if score >= 40 else "Не зачтено"
         )
-        color = "#66bb6a" if score >= 70 else "#ff8f00" if score >= 40 else "#ef5350"
+        color = "#4ade80" if score >= 70 else "#fb923c" if score >= 40 else "#f87171"
         badge = self.el["ex_score_badge"]
         badge.set_text(f"{verdict} · {score}/100")
         badge.style(

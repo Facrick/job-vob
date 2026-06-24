@@ -62,13 +62,6 @@ _GRADE_PATTERNS: list[tuple[str, list[str]]] = [
     ("Junior",      ["junior", "джун", "jr.", "стажёр", "стажер",
                      "intern", "trainee", "начинающий"]),
 ]
-GRADE_COLORS = {
-    "Junior":      "BLUE_300",
-    "Middle":      "INDIGO_400",
-    "Senior/Lead": "PURPLE_400",
-}
-
-
 def detect_grade(title: str) -> str:
     t = (title or "").lower()
     for grade, patterns in _GRADE_PATTERNS:
